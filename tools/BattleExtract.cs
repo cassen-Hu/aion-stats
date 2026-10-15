@@ -37,6 +37,11 @@ public static class AionBattleExtract
     static int Int(string s) { int.TryParse(s, out var v); return v; }
 
     public static string Run(string factsPath, string[] framePaths, string anchorsPath, string boundsPath, string outDir, string date, double sampleSec)
+        => Run(factsPath, framePaths, anchorsPath, boundsPath, outDir, date, sampleSec, null);
+
+    // hitsPath = AionCaptureReview 统一账本导出的 x-ledger-hits.csv（已去重、已按新口径筛选）。
+    // 给了就用它算伤害与活动分段，保证与日排行同一口径；facts 仍用于人员映射、名字和击杀。
+    public static string Run(string factsPath, string[] framePaths, string anchorsPath, string boundsPath, string outDir, string date, double sampleSec, string? hitsPath)
     {
         var log = new StringBuilder();
         // ── 1. facts：对象→人员映射、伤害、击杀 ──
@@ -72,6 +77,17 @@ public static class AionBattleExtract
                     hits.Add(new Hit { T = t, A = ap, Tg = tp, Amt = amt, Auto = fc == 1 });
                 }
             }
+        }
+        if (!string.IsNullOrEmpty(hitsPath))
+        {
+            hits.Clear();
+            foreach (var l in File.ReadLines(hitsPath).Skip(1))
+            {
+                var p = l.Split(',');
+                hits.Add(new Hit { T = DateTime.Parse(p[0], CultureInfo.InvariantCulture, DateTimeStyles.AdjustToUniversal | DateTimeStyles.AssumeUniversal),
+                    A = Int(p[1]), Tg = p[6] == "1" ? Int(p[2]) : 0, Amt = long.Parse(p[4]), Auto = p[5] == "1" });
+            }
+            log.AppendLine($"伤害口径：统一账本 {Path.GetFileName(hitsPath)}，{hits.Count} 击");
         }
         // 击杀去重：同一击杀者+阵亡者 4 秒内只算一次（与程序 KillDedupWindow 一致）
         kills.Sort((a, b) => a.T.CompareTo(b.T));

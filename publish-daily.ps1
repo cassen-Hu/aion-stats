@@ -1,4 +1,4 @@
-﻿<#
+<#
   水表数据每日发布脚本
   用法：
     .\publish-daily.ps1                 # 发布 Evidence 里最新一天
@@ -16,7 +16,8 @@ param(
   [string]$ReleaseDir = 'C:\Users\Cassen\Documents\AionS2-Isolated-20261015-Batch25\Release',
   [string]$FramesFile,          # 不填则从当天 .txt 报告的“文件:”行读取
   [switch]$NoBattles,           # 跳过分场/沙盘（只发布日汇总）
-  [double]$TrackSampleSec = 3   # 沙盘轨迹采样间隔（秒）
+  [double]$TrackSampleSec = 3,  # 沙盘轨迹采样间隔（秒）
+  [string]$LedgerDir = 'F:\GB-AionLive\AionCaptureReview\Out\ledger'   # AionCaptureReview 统一账本输出（x-ledger-*.csv）
 )
 #Requires -Version 7
 $ErrorActionPreference = 'Stop'
@@ -36,16 +37,27 @@ function Publish-One([string]$d) {
   $base = Join-Path $EvidenceDir "$Prefix$d"
   $pf = "$base.s2-players.csv"; $lf = "$base.s2-legions.csv"; $sf = "$base.s2-skill-patterns.csv"
   if (-not (Test-Path $pf)) { throw "找不到 $pf" }
+  # 伤害一律用统一账本（AionCaptureReview Ledger：跨观察端字节去重 + marker 0x0200/0xC200）
+  $lbase = Join-Path $LedgerDir "$Prefix$d"
+  $lp = "$lbase.x-ledger-players.csv"
+  if (-not (Test-Path $lp)) { throw "找不到统一账本 $lp（先在 AionCaptureReview 出表，或 --ledger 生成）" }
+  $ledger = @{}; Import-Csv $lp -Encoding UTF8 | ForEach-Object { $ledger[(L $_.PersonIndex)] = $_ }
   # 白名单字段（玩家）
-  $players = @(Import-Csv $pf -Encoding UTF8 | ForEach-Object {
+  $players = @(Import-Csv $pf -Encoding UTF8 | ForEach-Object { $g = $ledger[(L $_.PersonIndex)]
     [ordered]@{ id = (L $_.PersonIndex); name = $_.Name; legion = $_.Legion; race = (L $_.Race); classId = (L $_.ClassId)
-      sources = (L $_.SourceEntities); pvpSkill = (L $_.PvpSkillCandidate); pvpAuto = (L $_.PvpAutoCandidate)
-      pveSkill = (L $_.PveSkillCandidate); pveAuto = (L $_.PveAutoCandidate) } })
-  $legions = @()
-  if (Test-Path $lf) { $legions = @(Import-Csv $lf -Encoding UTF8 | ForEach-Object {
-    [ordered]@{ legion = $_.Legion; race = (L $_.Race); members = (L $_.ContributingPersons)
-      pvpSkill = (L $_.PvpSkillCandidate); pvpAuto = (L $_.PvpAutoCandidate)
-      pveSkill = (L $_.PveSkillCandidate); pveAuto = (L $_.PveAutoCandidate) } }) }
+      sources = (L $_.SourceEntities); pvpSkill = (L $g.PvP技能); pvpAuto = (L $g.PvP普攻)
+      pveSkill = (L $g.PvE技能); pveAuto = (L $g.PvE普攻) } })
+  # 账本里有伤害、但 B25 玩家表里没有的人，也补进来（否则日合计会比账本少）
+  $known = @{}; $players | ForEach-Object { $known[$_.id] = 1 }
+  foreach ($k in $ledger.Keys) { if ($known.ContainsKey($k)) { continue }; $g = $ledger[$k]
+    $players += [ordered]@{ id = $k; name = $g.名字; legion = ''; race = $(if ($g.阵营 -eq '天') { 0 } elseif ($g.阵营 -eq '魔') { 1 } else { -1 }); classId = 0
+      sources = 0; pvpSkill = (L $g.PvP技能); pvpAuto = (L $g.PvP普攻); pveSkill = (L $g.PvE技能); pveAuto = (L $g.PvE普攻) } }
+  # 军团 = 同军团同阵营玩家（新口径）求和；人数 = 有伤害的成员
+  $legions = @($players | Where-Object { $_.legion } | Group-Object { "$($_.legion)|$($_.race)" } | ForEach-Object {
+    $m = $_.Group; $dm = @($m | Where-Object { $_.pvpSkill + $_.pvpAuto + $_.pveSkill + $_.pveAuto -gt 0 })
+    [ordered]@{ legion = $m[0].legion; race = $m[0].race; members = $dm.Count
+      pvpSkill = [long]($m | ForEach-Object { $_.pvpSkill } | Measure-Object -Sum).Sum; pvpAuto = [long]($m | ForEach-Object { $_.pvpAuto } | Measure-Object -Sum).Sum
+      pveSkill = [long]($m | ForEach-Object { $_.pveSkill } | Measure-Object -Sum).Sum; pveAuto = [long]($m | ForEach-Object { $_.pveAuto } | Measure-Object -Sum).Sum } } | Where-Object { $_.members -gt 0 })
   # 技能结构统计：去掉 FirstObserver / FirstSessionHash / FirstFrameIndex / FirstRecordIndex
   $skills = @()
   if (Test-Path $sf) { $skills = @(Import-Csv $sf -Encoding UTF8 | ForEach-Object {
@@ -58,11 +70,12 @@ function Publish-One([string]$d) {
   $json = ConvertTo-Json $obj -Depth 5 -Compress
   [IO.File]::WriteAllText((Join-Path $DataDir "$iso.json"), $json, $Utf8)
   Write-Host "已生成 data/$iso.json  玩家 $($players.Count)  军团 $($legions.Count)  技能结构 $($skills.Count)"
-  if (-not $NoBattles) { Publish-Battles $d $iso $base }
+  if (-not $NoBattles) { Publish-Battles $d $iso $base "$lbase.x-ledger-hits.csv" }
 }
 
 # 每场战斗 + 沙盘轨迹：facts.csv 与解码帧只在本机读取，输出只含白名单聚合（见 tools\BattleExtract.cs）
-function Publish-Battles([string]$d, [string]$iso, [string]$base) {
+function Publish-Battles([string]$d, [string]$iso, [string]$base, [string]$hitsPath) {
+  if (-not (Test-Path $hitsPath)) { throw "找不到统一账本命中列表 $hitsPath" }
   $facts = "$base.s2-facts.csv"
   if (-not (Test-Path $facts)) { Write-Warning "没有 $facts，跳过分场"; return }
   $frames = $FramesFile
@@ -74,7 +87,7 @@ function Publish-Battles([string]$d, [string]$iso, [string]$base) {
   if (-not ('AionBattleExtract' -as [type])) { Add-Type -Path (Join-Path $Site 'tools\BattleExtract.cs') }
   Get-ChildItem (Join-Path $DataDir 'tracks') -Filter "$iso-b*.js" -ErrorAction SilentlyContinue | Remove-Item
   $log = [AionBattleExtract]::Run($facts, @($frames | Where-Object { $_ }), (Join-Path $ReleaseDir 'npc-map-anchors.tsv'),
-    (Join-Path $ReleaseDir 'mapbounds.tsv'), $DataDir, $iso, $TrackSampleSec)
+    (Join-Path $ReleaseDir 'mapbounds.tsv'), $DataDir, $iso, $TrackSampleSec, $hitsPath)
   $log -split "`n" | Where-Object { $_ -notmatch '^MAPS:' } | ForEach-Object { Write-Host "  $_" }
   $script:MapsUsed += @(($log -split "`n" | Where-Object { $_ -match '^MAPS:' }) -replace '^MAPS:', '' -split ',' | Where-Object { $_ })
 }
