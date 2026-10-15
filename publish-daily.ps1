@@ -12,13 +12,14 @@ param(
   [switch]$All,
   [switch]$NoPush,
   [ValidateSet('s1', 's2', 's4', 's5', 's6')][string]$Server = 's1',   # 区服：s1 一区 亚特雷亚 / s2 二区 要塞盘龙 / s4 四区 命运回转 / s5 五区 荣耀再临 / s6 六区 破晓之光
-  [string]$EvidenceDir = 'C:\Users\Cassen\Documents\AionS2-Isolated-20261015-Batch25\Evidence',
+  [string]$EvidenceDir = (Join-Path $PSScriptRoot '..\AionCaptureReview\Out'),
   [string]$Prefix = 'B25-PL-import-real-',
-  [string]$ReleaseDir = 'C:\Users\Cassen\Documents\AionS2-Isolated-20261015-Batch25\Release',
+  [string]$ReleaseDir = (Join-Path $PSScriptRoot '..\AionCaptureReview\maps'),   # npc-map-anchors.tsv / mapbounds.tsv / mapnames.tsv / Maps\*_full.png
   [string]$FramesFile,          # 不填则从当天 .txt 报告的“文件:”行读取
   [switch]$NoBattles,           # 跳过分场/沙盘（只发布日汇总）
   [double]$TrackSampleSec = 3,  # 沙盘轨迹采样间隔（秒）
-  [string]$SkillTable = 'F:\Aion-Project\CB-CaoBattle\Program\Data\aion_skills_cn.json',   # 客户端技能表（中文名）；不用 MyAion 协议映射表
+  [string]$SkillTable = (Join-Path $PSScriptRoot '..\AionCaptureReview\Data\aion_skills_cn.json'),
+  [string]$SkillXml = (Join-Path $PSScriptRoot '..\AionCaptureReview\Data\skill_templates.xml'),   # 客户端技能表（中文名）；不用 MyAion 协议映射表
   [string]$ExtrasDir = 'F:\GB-AionLive\AionCaptureReview\Out',   # AionCaptureReview 协议补充输出（x-casts/x-buffs/x-equip/x-deaths/x-npc-target/x-revives）
   [string]$IconDds = 'C:\Users\Cassen\aion_work\dds',   # 客户端 skills.pak 解出的技能图标 DDS
   [string]$LedgerDir = 'F:\GB-AionLive\AionCaptureReview\Out\ledger'   # AionCaptureReview 统一账本输出（x-ledger-*.csv）
@@ -58,7 +59,7 @@ function Publish-One([string]$d) {
     $players += [ordered]@{ id = $k; name = $g.名字; legion = ''; race = $(if ($g.阵营 -eq '天') { 0 } elseif ($g.阵营 -eq '魔') { 1 } else { -1 }); classId = 0
       sources = 0; pvpSkill = (L $g.PvP技能); pvpAuto = (L $g.PvP普攻); pveSkill = (L $g.PvE技能); pveAuto = (L $g.PvE普攻) } }
   # 军团 = 同军团同阵营玩家（新口径）求和；人数 = 有伤害的成员
-  # 阵营主来源：服务端 0x0020 PlayerInfo race@37（0=天族 1=魔族），全天抓包扫出的 tools\packet-race.tsv；没有该包的玩家才沿用名单
+  # 阵营主来源：服务端 0x0020 PlayerInfo race@37（0=天族 1=魔族），只取当天抓包（tools\build-day-race.js），没有该包＝未知
   # 严格当天：阵营只取当天抓包 0x0020@37（tools\build-day-race.js → tools\day-race.tsv），没有包的玩家阵营＝未知(-1)，不跨日、不用名单、不推断
   $frames = $FramesFile
   if (-not $frames -and (Test-Path "$base.txt")) { $m = Get-Content "$base.txt" -Encoding UTF8 -TotalCount 5 | Select-String '文件:\s*(.+\.ndjson)'; if ($m) { $frames = $m.Matches[0].Groups[1].Value.Trim() } }
@@ -136,7 +137,7 @@ if (Test-Path $SkillTable) {
   [IO.File]::WriteAllLines((Join-Path $Site 'tools\mp-skills.txt'), [string[]]$mp)
 } else { Write-Warning "找不到技能表 $SkillTable，技能名与回蓝过滤不可用" }
 # AOE 技能：skill_templates.xml 里 target_type="AREA"（与 Batch25 SkillData 的 AOE 判定相同，不用 MyAion 协议映射兜底）
-$SkillXml = 'F:\Aion-Project\CB-CaoBattle\Program\StaticData\Data\skill_templates.xml'
+# $SkillXml 见参数
 if (Test-Path $SkillXml) {
   $aoeIds = [regex]::Matches([IO.File]::ReadAllText($SkillXml), '<skill_template[^>]*?skill_id="(\d+)"[^>]*>\s*<properties[^>]*target_type="AREA"') | ForEach-Object { $_.Groups[1].Value }
   [IO.File]::WriteAllLines((Join-Path $Site 'tools\aoe-skills.txt'), [string[]]$aoeIds)

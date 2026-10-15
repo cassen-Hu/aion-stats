@@ -12,7 +12,7 @@
    .\publish-daily.ps1 -NoPush          # 只生成数据，不上传
    ```
    若提示“禁止运行脚本”，先执行一次：`Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`
-2. 脚本会从 `C:\Users\Cassen\Documents\AionS2-Isolated-20261015-Batch25\Evidence` 读取
+2. 脚本会从 `..\AionCaptureReview\Out` 读取
    `B25-PL-import-real-日期.s2-players.csv / .s2-legions.csv / .s2-skill-patterns.csv`，
    生成 `data\YYYY-MM-DD.json` 并更新 `data\index.json`。
 3. 如果本文件夹是 git 仓库且配置了远程仓库，脚本会自动提交并推送；Cloudflare 1~2 分钟后自动更新网站。
