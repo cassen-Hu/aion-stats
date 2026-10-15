@@ -50,7 +50,7 @@ public static class AionBattleExtract
         var oidToPerson = new Dictionary<(string, uint), int>(); var pname = new Dictionary<int, string>();
         var hits = new List<Hit>(); var kills = new List<Kill>();
         var seen = new HashSet<(int, int, long, long, long)>();
-        var heals = new List<Hit>(); var hseen = new HashSet<(int, int, long, long, long)>();
+        var heals = new List<Hit>(); var sheals = new List<Hit>(); var hseen = new HashSet<(int, int, long, long, long)>();
         var mpSkills = new HashSet<int>(); var mpf = Path.Combine(SiteRoot(outDir), "tools", "mp-skills.txt");
         if (File.Exists(mpf)) foreach (var l in File.ReadLines(mpf)) if (int.TryParse(l.Trim(), out var mi)) mpSkills.Add(mi);
         DateTime first = DateTime.MaxValue, last = DateTime.MinValue;
@@ -72,14 +72,14 @@ public static class AionBattleExtract
                 int fc = Int(f[cF]);
                 if (f[cK].Length > 0 && f[cV].Length > 0) { if (f[cK] == f[cV]) continue; /* 自杀不算 PvP 击杀 */ kills.Add(new Kill { T = t, K = f[cK], V = f[cV] }); continue; }
                 // 治疗：class 4 + marker 0x0AFF 的负值记录（技能均为治疗类，见报告）；去掉自疗与回蓝类技能
-                if (fc == 4 && ap > 0 && tp > 0 && ap != tp && cMk >= 0 && Hex(f[cMk]) == 0x0AFF)
+                if (fc == 4 && ap > 0 && tp > 0 && cMk >= 0 && Hex(f[cMk]) == 0x0AFF)   // 自疗进 sheals（只用于 PvP治疗），其它统计照旧不含自疗
                 {
                     long ha; long.TryParse(f[cAm], out ha); int hs = Int(f[cSk]);
                     if (ha < 0 && ha > -1000000 && !mpSkills.Contains(hs))
                     {
                         long hsec = t.Ticks / TimeSpan.TicksPerSecond; var hk = (ap, tp, (long)hs, ha, hsec);
                         if (!hseen.Contains(hk) && !hseen.Contains((ap, tp, (long)hs, ha, hsec - 1)) && !hseen.Contains((ap, tp, (long)hs, ha, hsec + 1)))
-                        { hseen.Add(hk); heals.Add(new Hit { T = t, A = ap, Tg = tp, Sk = hs, Amt = -ha }); }
+                        { hseen.Add(hk); (ap == tp ? sheals : heals).Add(new Hit { T = t, A = ap, Tg = tp, Sk = hs, Amt = -ha }); }
                     }
                     continue;
                 }
@@ -329,11 +329,32 @@ public static class AionBattleExtract
         Directory.CreateDirectory(Path.Combine(outDir, "prof"));
         var aoe = new HashSet<int>(); var aof = Path.Combine(SiteRoot(outDir), "tools", "aoe-skills.txt");
         if (File.Exists(aof)) foreach (var l in File.ReadLines(aof)) if (int.TryParse(l.Trim(), out var ai)) aoe.Add(ai);
+        // 有 PvP治疗的玩家：名字 + 当天抓包阵营（纯治疗、没有伤害的人不在日名单里，前端据此补行）
+        Dictionary<string, object[]> HealNames(Dictionary<int, long[]> ps) { var hr = new Dictionary<string, int>(); var hrf = Path.Combine(SiteRoot(outDir), "tools", "day-race.tsv");
+            if (File.Exists(hrf)) foreach (var l in File.ReadLines(hrf, Encoding.UTF8)) { var q = l.Split('\t'); if (q.Length == 2 && int.TryParse(q[1], out var rr) && rr is 0 or 1) hr[q[0]] = rr; }
+            return ps.Where(x => x.Value[5] > 0 && pname.ContainsKey(x.Key)).ToDictionary(x => x.Key.ToString(), x => new object[] { pname[x.Key], hr.TryGetValue(pname[x.Key], out var r) ? r : -1 }); }
         var pst = new Dictionary<int, long[]>(); // 注：[3][4] 在关系段填入，prof 在其后写出
         string profPath = Path.Combine(outDir, "prof", date + ".js");   // [PvP受到, 治疗量, AOE PvP伤害]
-        long[] S(int id) { if (!pst.TryGetValue(id, out var v)) pst[id] = v = new long[5]; return v; }   // +[3]复活他人 [4]被复活
+        long[] S(int id) { if (!pst.TryGetValue(id, out var v)) pst[id] = v = new long[7]; return v; }   // [5]PvP治疗（含自疗） [6]其中自疗   // +[3]复活他人 [4]被复活
         foreach (var h in hits) { if (h.Tg <= 0) continue; S(h.Tg)[0] += h.Amt; if (!h.Auto && aoe.Contains(h.Sk)) S(h.A)[2] += h.Amt; }
         foreach (var h in heals) S(h.A)[1] += h.Amt;
+        // PvP治疗：>50人战斗时段内，治疗技能（tools/heal-skills.txt：技能表 Effects 含 Heal、不含 MP/FP）给同阵营玩家（当天抓包阵营）或自己的治疗量；去重同上，排除 >1M、NPC、回蓝
+        {
+            var hsk = new HashSet<int>(); var hsf = Path.Combine(SiteRoot(outDir), "tools", "heal-skills.txt");
+            if (File.Exists(hsf)) foreach (var l in File.ReadLines(hsf)) if (int.TryParse(l.Trim(), out var hi)) hsk.Add(hi);
+            var hr = new Dictionary<string, int>(); var hrf = Path.Combine(SiteRoot(outDir), "tools", "day-race.tsv");
+            if (File.Exists(hrf)) foreach (var l in File.ReadLines(hrf, Encoding.UTF8)) { var q = l.Split('\t'); if (q.Length == 2 && int.TryParse(q[1], out var rr) && rr is 0 or 1) hr[q[0]] = rr; }
+            int HR(int id) => pname.TryGetValue(id, out var nm) && hr.TryGetValue(nm, out var r) ? r : -1;
+            long ho = 0, hs0 = 0;
+            foreach (var h in heals.Concat(sheals))
+            {
+                if (!hsk.Contains(h.Sk) || Find(h.T) == null) continue;
+                bool self = h.A == h.Tg; if (!self) { int ra = HR(h.A); if (ra < 0 || ra != HR(h.Tg)) continue; }
+                var v = S(h.A); v[5] += h.Amt; if (self) { v[6] += h.Amt; hs0 += h.Amt; } else ho += h.Amt;
+            }
+            log.AppendLine($"PVPHEAL 给队友 {ho} 自疗 {hs0} 合计 {ho + hs0}（治疗技能 {hsk.Count} 个）");
+        }
+
         var rkOut = new Dictionary<string, int[]>();
         foreach (var kv in pname) if (identRank.TryGetValue(kv.Value, out var r0)) rkOut[kv.Key.ToString()] = new[] { r0, identLv.GetValueOrDefault(kv.Value, 0) };
         log.AppendLine($"身份帧：军阶 {identRank.Count} 人，其中 ≥14 共 {identRank.Count(x => x.Value >= 14)} 人；AOE 技能表 {aoe.Count} 个");
@@ -390,7 +411,7 @@ public static class AionBattleExtract
             }
             log.AppendLine($"关系：{ids.Count} 人；治疗记录 {heals.Count}（去重、排除自疗/回蓝）");
         }
-        File.WriteAllText(profPath, "(window.AION_PROF=window.AION_PROF||{})[" + JsonSerializer.Serialize(date) + "]=" + JsonSerializer.Serialize(new { kd, st = pst.ToDictionary(x => x.Key.ToString(), x => x.Value), rk = rkOut }, opts) + ";", new UTF8Encoding(false));
+        File.WriteAllText(profPath, "(window.AION_PROF=window.AION_PROF||{})[" + JsonSerializer.Serialize(date) + "]=" + JsonSerializer.Serialize(new { kd, st = pst.ToDictionary(x => x.Key.ToString(), x => x.Value), rk = rkOut, hn = HealNames(pst) }, opts) + ";", new UTF8Encoding(false));
         File.WriteAllText(Path.Combine(outDir, date + ".battles.json"), JsonSerializer.Serialize(summary, opts), new UTF8Encoding(false));
         log.AppendLine($"战斗 {battles.Count} 场；地图 {string.Join(",", mapsUsed)}");
         log.Append("MAPS:" + string.Join(",", mapsUsed));

@@ -135,6 +135,9 @@ if (Test-Path $SkillTable) {
   foreach ($e in ([IO.File]::ReadAllText($SkillTable) | ConvertFrom-Json)) { if ($e.ChineseName) { $script:SkillNames[[int]$e.SkillId] = $e.ChineseName } }
   $mp = @($script:SkillNames.GetEnumerator() | Where-Object { $_.Value -match '精神力|魔力|精气' } | ForEach-Object { $_.Key })
   [IO.File]::WriteAllLines((Join-Path $Site 'tools\mp-skills.txt'), [string[]]$mp)
+  # 治疗技能：技能表 Effects 里有 Heal 类（不含 MP/FP 回复）→ tools\heal-skills.txt（PvP治疗用）
+  $hl = @(([IO.File]::ReadAllText($SkillTable) | ConvertFrom-Json) | Where-Object { @($_.Effects | Where-Object { "$($_.Type)" -match 'heal' -and "$($_.Type)" -notmatch 'mp|fp|dp' }).Count -gt 0 } | ForEach-Object { [string]$_.SkillId })
+  [IO.File]::WriteAllLines((Join-Path $Site 'tools\heal-skills.txt'), [string[]]$hl)
 } else { Write-Warning "找不到技能表 $SkillTable，技能名与回蓝过滤不可用" }
 # AOE 技能：skill_templates.xml 里 target_type="AREA"（与 Batch25 SkillData 的 AOE 判定相同，不用 MyAion 协议映射兜底）
 # $SkillXml 见参数

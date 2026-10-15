@@ -55,7 +55,7 @@
     return rows.length;
   }
   const num = (k, n, h) => ({ k, n, bar: true, h });
-  const dmgCols = () => [num('pvp', 'PvP合计'), num('taken', 'PvP承伤'), num('pvpSkill', 'PvP技能', 1), num('pvpAuto', 'PvP普攻', 1), num('pve', 'PvE合计'), num('pveSkill', 'PvE技能', 1), num('pveAuto', 'PvE普攻', 1)];
+  const dmgCols = () => [num('pvp', 'PvP合计'), num('taken', 'PvP承伤'), num('pvpHeal', 'PvP治疗'), num('pvpSkill', 'PvP技能', 1), num('pvpAuto', 'PvP普攻', 1), num('pve', 'PvE合计'), num('pveSkill', 'PvE技能', 1), num('pveAuto', 'PvE普攻', 1)];
 
   function render() {
     if (!data) return;
@@ -352,7 +352,7 @@
     const row = (a, b) => `<tr><td class="t">${a}</td><td>${b}</td></tr>`;
     inner.innerHTML = `<button class="px">✕</button><h2>${esc(p.name)} ${race(p.race)}</h2>
       <table class="kv">${row('军团', p.legion ? `<span class="ln" data-lg="${esc(p.legion)}" data-r="${p.race}">${esc(p.legion)}</span>` : '（无）')}${(pr && pr.rk && pr.rk[id]) ? row('等级', pr.rk[id][1] || '-') + row('深渊军阶', rankName(pr.rk[id][0], p.race)) : ''}${p.classId ? row('职业', cls(p.classId)) : ''}${row('日期', data.date)}</table>
-      <h4>当天伤害</h4><table class="kv">${row('PvP 技能', fmt(p.pvpSkill))}${row('PvP 普攻', fmt(p.pvpAuto))}${row('PvP 承伤', fmt(p.taken))}${row('PvE 技能', fmt(p.pveSkill))}${row('PvE 普攻', fmt(p.pveAuto))}${row('击杀 / 阵亡', `${kd[0]} / <span class="dead">${kd[1]}</span>`)}</table>
+      <h4>当天伤害</h4><table class="kv">${row('PvP 技能', fmt(p.pvpSkill))}${row('PvP 普攻', fmt(p.pvpAuto))}${row('PvP 承伤', fmt(p.taken))}${row('PvP 治疗', `${fmt(p.pvpHeal || 0)}（其中自疗 ${fmt(p.selfHeal || 0)}）`)}${row('PvE 技能', fmt(p.pveSkill))}${row('PvE 普攻', fmt(p.pveAuto))}${row('击杀 / 阵亡', `${kd[0]} / <span class="dead">${kd[1]}</span>`)}</table>
       <h4>参与的战斗（${bt.length}）</h4>${bt.length ? `<div class="pf-scroll"><table class="kv"><tr><th class="t">场次</th><th>PvP</th><th>PvP承伤</th><th>PvE</th><th>击杀</th><th>阵亡</th></tr>${bt.map(x => `<tr><td class="t"><a href="#" data-b="${x.i}">第 ${x.b.no} 场 ${hm(x.b.start)} ${esc(mapName(x.b.map))}</a></td><td>${fmt(x.pvp)}</td><td>${fmt(x.tk)}</td><td>${fmt(x.pve)}</td><td>${x.k}</td><td>${x.v}</td></tr>`).join('')}</table></div>` : '<p class="note">无</p>'}
       <h4>使用的技能</h4>${skillTable(sk)}
       ${pxHtml(px, data.date)}
@@ -378,9 +378,10 @@
     const day = await getDay(d);
     data = JSON.parse(JSON.stringify(day.daily)); battles = day.battles || [];
     data.players.forEach(enrich); data.legions.forEach(enrich); data.skillPatterns ||= [];
-    { let st = {}; try { st = ((await getProf(d)) || {}).st || {}; } catch {} const lt = {};
-      data.players.forEach(p => { const s = st[p.id]; p.taken = s ? s[0] : 0; p.rev = s ? (s[3] || 0) : 0; const k = p.legion + '|' + p.race; lt[k] = (lt[k] || 0) + p.taken; });
-      data.legions.forEach(l => l.taken = lt[l.legion + '|' + l.race] || 0); }
+    { let st = {}; try { st = ((await getProf(d)) || {}).st || {}; } catch {} const lt = {}, lh = {};
+      { const have = new Set(data.players.map(p => p.id)), hn = await getProf(d).then(x => (x && x.hn) || {}, () => ({})); Object.entries(hn).forEach(([id, v]) => { if (!have.has(+id)) data.players.push(enrich({ id: +id, name: v[0], legion: '', race: v[1], classId: 0, sources: 0, pvpSkill: 0, pvpAuto: 0, pveSkill: 0, pveAuto: 0, healOnly: 1 })); }); }   // 纯治疗（没有伤害）的人补进名单
+      data.players.forEach(p => { const s = st[p.id]; p.taken = s ? s[0] : 0; p.rev = s ? (s[3] || 0) : 0; p.pvpHeal = s ? (s[5] || 0) : 0; p.selfHeal = s ? (s[6] || 0) : 0; const k = p.legion + '|' + p.race; lt[k] = (lt[k] || 0) + p.taken; lh[k] = (lh[k] || 0) + p.pvpHeal; });
+      data.legions.forEach(l => { l.taken = lt[l.legion + '|' + l.race] || 0; l.pvpHeal = lh[l.legion + '|' + l.race] || 0; }); }
     byId = {}; data.players.forEach(p => byId[p.id] = p);
     limit = 100; curBattle = -1; SB.tr = null; fillSandboxSelect(); render();
     if ($('#sandbox').classList.contains('on') && battles.length) openSandbox(0); else draw();
