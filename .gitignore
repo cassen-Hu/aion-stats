@@ -1,0 +1,7 @@
+# intermediate files used by publish-daily.ps1 (page loads data/day/*.js)
+data/*.json
+tools/bin/
+tools/obj/
+*.tmp
+*.log
+Thumbs.db

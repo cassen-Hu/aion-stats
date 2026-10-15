@@ -1,0 +1,264 @@
+(() => {
+  'use strict';
+  const CLASS = {1:'剑星',2:'守护星',4:'杀星',5:'弓星',7:'魔道星',8:'精灵星',10:'治愈星',11:'护法星'};
+  const RACE = {0:'天族',1:'魔族'};
+  const RCOL = {0:'#4ade80',1:'#60a5fa'}, UCOL = '#9ca3af';
+  const $ = s => document.querySelector(s);
+  const fmt = n => Number(n || 0).toLocaleString('zh-CN');
+  const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const cls = id => CLASS[id] || (id ? '职业' + id : '-');
+  const race = r => r === 0 || r === 1 ? `<span class="r${r}">${RACE[r]}</span>` : '<span class="unk">?</span>';
+  const tz = { timeZone: 'Asia/Shanghai', hour12: false };
+  const hm = iso => new Date(iso).toLocaleTimeString('zh-CN', { ...tz, hour: '2-digit', minute: '2-digit' });
+  const mmss = s => { s = Math.max(0, Math.floor(s)); const m = Math.floor(s / 60); return String(m).padStart(2, '0') + ':' + String(s % 60).padStart(2, '0'); };
+  const D = window.AION_DATA || { index: [], maps: {} };
+  const MAPS = D.maps || {};
+  let data = null, battles = [], byId = {}, limit = 100, curBattle = -1;
+  const sortState = { tp: ['pvp', -1], tl: ['pvp', -1], tc: ['pvp', -1], ts: ['records', -1], tb: ['pvp', -1] };
+
+  // —— 用 <script> 加载数据：file:// 双击和网站托管都能用 ——
+  const loaded = {};
+  function loadScript(src) {
+    return loaded[src] ||= new Promise((ok, no) => { const s = document.createElement('script'); s.src = src;
+      s.onload = ok; s.onerror = () => { delete loaded[src]; no(new Error('加载失败 ' + src)); }; document.head.appendChild(s); });
+  }
+  async function getDay(d) {
+    if (!(window.AION_DAYS && window.AION_DAYS[d])) await loadScript(`data/day/${d}.js`);
+    return window.AION_DAYS[d];
+  }
+  async function getTracks(key) {
+    if (!(window.AION_TRACKS && window.AION_TRACKS[key])) await loadScript(`data/tracks/${key}.js`);
+    return window.AION_TRACKS[key];
+  }
+
+  Object.entries(CLASS).forEach(([k, v]) => $('#cls').insertAdjacentHTML('beforeend', `<option value="${k}">${v}</option>`));
+  const enrich = r => { r.pvp = r.pvpSkill + r.pvpAuto; r.pve = r.pveSkill + r.pveAuto; return r; };
+  function filt(rows, nameKeys) {
+    const q = $('#q').value.trim().toLowerCase(), rc = $('#race').value, c = $('#cls').value;
+    return rows.filter(r => (rc === '' || String(r.race) === rc) && (c === '' || r.classId === undefined || String(r.classId) === c)
+      && (!q || nameKeys.some(k => String(r[k] || '').toLowerCase().includes(q))));
+  }
+  function table(id, cols, rows, max) {
+    const [sk, sd] = sortState[id];
+    rows = rows.slice().sort((a, b) => { const x = a[sk], y = b[sk]; return (typeof x === 'string' ? String(x).localeCompare(y, 'zh') : (x ?? -1) - (y ?? -1)) * sd; });
+    const top = Math.max(1, ...rows.map(r => r[sk]).filter(v => typeof v === 'number'));
+    const head = '<tr><th class="t">#</th>' + cols.map(c => `<th data-k="${c.k}" class="${c.t ? 't' : ''} ${c.h ? 'hm' : ''} ${c.k === sk ? 's' + (sd > 0 ? ' asc' : '') : ''}">${c.n}</th>`).join('') + '</tr>';
+    const body = rows.slice(0, max || rows.length).map((r, i) => '<tr><td class="t rk">' + (i + 1) + '</td>' + cols.map(c => {
+      let v = c.f ? c.f(r) : (typeof r[c.k] === 'number' ? fmt(r[c.k]) : esc(r[c.k]));
+      if (c.bar && c.k === sk) v = `<span class="bar" style="width:${Math.round(40 * r[c.k] / top)}px"></span>` + v;
+      return `<td class="${c.t ? 't' : ''} ${c.h ? 'hm' : ''}">${v}</td>`; }).join('') + '</tr>').join('');
+    const el = $('#' + id);
+    el.innerHTML = '<thead>' + head + '</thead><tbody>' + body + '</tbody>';
+    el.querySelectorAll('th[data-k]').forEach(th => th.onclick = () => {
+      const k = th.dataset.k; sortState[id] = [k, sortState[id][0] === k ? -sortState[id][1] : -1]; render(); });
+    return rows.length;
+  }
+  const num = (k, n, h) => ({ k, n, bar: true, h });
+  const dmgCols = () => [num('pvp', 'PvP合计'), num('pvpSkill', 'PvP技能', 1), num('pvpAuto', 'PvP普攻', 1), num('pve', 'PvE合计'), num('pveSkill', 'PvE技能', 1), num('pveAuto', 'PvE普攻', 1)];
+
+  function render() {
+    if (!data) return;
+    const P = filt(data.players, ['name', 'legion']);
+    const n = table('tp', [{ k: 'name', n: '角色', t: 1, f: r => `<b>${esc(r.name)}</b>` }, { k: 'legion', n: '军团', t: 1 },
+      { k: 'race', n: '阵营', f: r => race(r.race) }, { k: 'classId', n: '职业', f: r => cls(r.classId) }, ...dmgCols()], P, limit);
+    $('#pm').innerHTML = n > limit ? `<button id="mb">显示更多（共 ${n} 人，当前 ${limit}）</button>` : `共 ${n} 人`;
+    if (n > limit) $('#mb').onclick = () => { limit += 200; render(); };
+    table('tl', [{ k: 'legion', n: '军团', t: 1, f: r => `<b>${esc(r.legion)}</b>` }, { k: 'race', n: '阵营', f: r => race(r.race) },
+      num('members', '人数'), ...dmgCols()], filt(data.legions, ['legion']));
+    const by = {};
+    P.forEach(p => { const g = by[p.race + '-' + p.classId] ||= { race: p.race, classId: p.classId, name: cls(p.classId), count: 0, pvp: 0, pve: 0 };
+      g.count++; g.pvp += p.pvp; g.pve += p.pve; });
+    table('tc', [{ k: 'name', n: '职业', t: 1 }, { k: 'race', n: '阵营', f: r => race(r.race) }, num('count', '人数'),
+      num('pvp', 'PvP合计'), num('avgPvp', '人均PvP'), num('pve', 'PvE合计', 1), num('avgPve', '人均PvE', 1)],
+      Object.values(by).map(g => ({ ...g, avgPvp: Math.round(g.pvp / g.count), avgPve: Math.round(g.pve / g.count) })));
+    table('ts', [{ k: 'factClass', n: '记录类型', t: 1 }, { k: 'marker', n: '标记', t: 1 }, num('records', '记录数'), num('positiveSum', '正值合计')], data.skillPatterns);
+    renderBattleList();
+    if (curBattle >= 0) renderBattleDetail(curBattle);
+    const sum = (a, k) => a.reduce((s, r) => s + r[k], 0), all = data.players;
+    $('#summary').innerHTML = [['日期', data.date], ['玩家', fmt(all.length)], ['军团', fmt(data.legions.length)], ['战斗场次', battles.length],
+      ['天族 PvP', fmt(sum(all.filter(p => p.race === 0), 'pvp'))], ['魔族 PvP', fmt(sum(all.filter(p => p.race === 1), 'pvp'))]]
+      .map(([a, b]) => `<div class="card"><span>${a}</span><b>${b}</b></div>`).join('');
+  }
+
+  // —— 战斗场次 ——
+  const mapName = m => m ? ((MAPS[m] && MAPS[m].name) || m) : '未识别地图';
+  function battleRows(b) {
+    return b.damage.map(d => { const p = byId[d.id] || {}; return enrich({ ...d, name: p.name || ('#' + d.id), legion: p.legion || '', race: p.race, classId: p.classId }); });
+  }
+  function renderBattleList() {
+    $('#blist').innerHTML = battles.length ? battles.map((b, i) => {
+      const rows = battleRows(b), pvp = rows.reduce((s, r) => s + r.pvp, 0);
+      return `<div class="bcard ${i === curBattle ? 'on' : ''}" data-i="${i}"><h3>第 ${b.no} 场 · ${esc(mapName(b.map))}</h3>
+        <div class="m">${hm(b.start)} – ${hm(b.end)}（${b.minutes} 分钟）${b.rule === 'activity' ? ' · 按交战活动分段' : ''}</div>
+        <div class="s"><span>⚔ ${rows.length} 人</span><span class="dead">✕ ${b.kills.length}</span><span>PvP ${fmt(pvp)}</span></div></div>`;
+    }).join('') : '<p class="note">这一天没有切分出战斗。</p>';
+    $('#blist').querySelectorAll('.bcard').forEach(c => c.onclick = () => { curBattle = +c.dataset.i; renderBattleList(); renderBattleDetail(curBattle); });
+    if (curBattle < 0) $('#bdetail').innerHTML = battles.length ? '<p class="note">点上面任意一场查看详情。</p>' : '';
+  }
+  function renderBattleDetail(i) {
+    const b = battles[i]; if (!b) return;
+    const rows = filt(battleRows(b), ['name', 'legion']);
+    const lg = {};
+    rows.forEach(r => { const g = lg[r.legion + '|' + r.race] ||= { legion: r.legion || '（无军团）', race: r.race, members: 0, pvp: 0, pve: 0 }; g.members++; g.pvp += r.pvp; g.pve += r.pve; });
+    const kc = {}, dc = {}; b.kills.forEach(k => { kc[k.killer] = (kc[k.killer] || 0) + 1; dc[k.victim] = (dc[k.victim] || 0) + 1; });
+    rows.forEach(r => { r.kills = kc[r.name] || 0; r.deaths = dc[r.name] || 0; });
+    $('#bdetail').innerHTML = `<div class="bd"><h2>第 ${b.no} 场 · ${esc(mapName(b.map))} · ${hm(b.start)}–${hm(b.end)}</h2>
+      <button class="btn" id="toSb">▶ 沙盘回放这一场</button> <span class="note">轨迹人数 ${b.tracked}</span>
+      <h4>参战玩家</h4><div class="tw"><table id="tb"></table></div>
+      <div class="grid2"><div><h4>军团</h4><div class="tw"><table id="tbl"></table></div></div>
+      <div><h4>击杀记录（${b.kills.length}）</h4><div class="kills">${b.kills.map(k => `<div><span class="tm">${mmss(k.t)}</span>${esc(k.killer)} <span class="dead">✕</span> ${esc(k.victim)}</div>`).join('') || '无'}</div></div></div></div>`;
+    table('tb', [{ k: 'name', n: '角色', t: 1, f: r => `<b>${esc(r.name)}</b>` }, { k: 'legion', n: '军团', t: 1 }, { k: 'race', n: '阵营', f: r => race(r.race) },
+      { k: 'classId', n: '职业', f: r => cls(r.classId) }, num('kills', '击杀'), num('deaths', '阵亡'), ...dmgCols()], rows);
+    sortState.tbl ||= ['pvp', -1];
+    table('tbl', [{ k: 'legion', n: '军团', t: 1 }, { k: 'race', n: '阵营', f: r => race(r.race) }, num('members', '人数'), num('pvp', 'PvP'), num('pve', 'PvE')], Object.values(lg));
+    $('#toSb').onclick = () => { showTab('sandbox'); $('#sbBattle').value = i; openSandbox(i); };
+  }
+
+  // —— 沙盘 ——
+  const cv = $('#sbCanvas'), ctx = cv.getContext('2d');
+  const SB = { tr: null, t: 0, playing: false, img: null, zoom: 1, panX: 0, panY: 0, pts: [], last: 0, deaths: [] };
+  function fillSandboxSelect() {
+    $('#sbBattle').innerHTML = battles.map((b, i) => `<option value="${i}">第 ${b.no} 场 ${hm(b.start)} ${esc(mapName(b.map))}</option>`).join('') || '<option>无</option>';
+  }
+  async function openSandbox(i) {
+    const b = battles[i]; if (!b) { SB.tr = null; draw(); return; }
+    SB.playing = false; $('#sbPlay').textContent = '▶ 播放'; $('#sbInfo').textContent = '加载轨迹…';
+    let tr; try { tr = await getTracks(b.key); } catch (e) { $('#sbInfo').textContent = e.message; return; }
+    SB.tr = tr; SB.b = b; SB.t = 0; SB.zoom = 1; SB.panX = SB.panY = 0;
+    // 预处理：每人 [t,x,y,...] → 数组
+    SB.people = Object.entries(tr.tracks).map(([id, a]) => { const p = byId[id] || {};
+      const T = [], X = [], Y = []; for (let k = 0; k < a.length; k += 3) { T.push(a[k]); X.push(a[k + 1]); Y.push(a[k + 2]); }
+      return { id, name: p.name || tr.names[id] || ('#' + id), race: p.race, legion: p.legion || '', T, X, Y }; });
+    const byName = {}; SB.people.forEach(p => byName[p.name] = p);
+    SB.deaths = b.kills.map(k => ({ t: k.t, p: byName[k.victim], k })).filter(d => d.p);
+    // 世界→画面映射
+    SB.map = SB.forceMap !== null && SB.forceMap !== undefined ? SB.forceMap : tr.map; SB.forceMap = null;
+    $('#sbMap').innerHTML = (b.maps || []).map(x => `<option value="${x.map}">${esc(mapName(x.map))}（${x.players}人）</option>`).join('') + '<option value="">全部坐标（无底图）</option>';
+    $('#sbMap').value = SB.map;
+    const m = MAPS[SB.map];
+    SB.bounds = (m && m.bounds) || null; SB.onMap = () => true;
+    if (!SB.bounds) { // 未识别地图：用全部坐标包围盒，纯坐标平面，不旋转
+      let x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9;
+      SB.people.forEach(p => SB.onMap(p.id) && p.X.forEach((x, k) => { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, p.Y[k]); y1 = Math.max(y1, p.Y[k]); }));
+      const pad = Math.max(50, (x1 - x0) * .1, (y1 - y0) * .1); SB.bounds = [x0 - pad, x1 + pad, y0 - pad, y1 + pad]; SB.rot = 0;
+    } else SB.rot = -90;
+    const layers = (m && m.layers) || [];
+    $('#sbLayer').innerHTML = layers.map(l => `<option>${l}</option>`).join('') + '<option value="">（无底图）</option>';
+    setLayer(layers[0] || '');
+    $('#sbSlider').max = tr.duration; $('#sbSlider').value = 0;
+    $('#sbInfo').textContent = `${mapName(tr.map)} · 轨迹 ${SB.people.length} 人 · 时长 ${mmss(tr.duration)}`;
+    // 初始视野：缩放到有人活动的区域
+    SB.t = Math.min(tr.duration, ...SB.people.filter(p => SB.onMap(p.id) && p.T.length).map(p => p.T[0]));
+    if (!isFinite(SB.t)) SB.t = 0;
+    fitToPlayers(); draw();
+  }
+  function setLayer(l) { SB.img = null; if (!l) { draw(); return; } const im = new Image(); im.onload = () => { SB.img = im; draw(); }; im.src = `maps/${l}.jpg`; }
+  function size() { const r = cv.getBoundingClientRect(), dpr = window.devicePixelRatio || 1; cv.width = r.width * dpr; cv.height = r.height * dpr; ctx.setTransform(dpr, 0, 0, dpr, 0, 0); return [r.width, r.height]; }
+  // 与水表一致：底图铺满地图真实坐标范围；玩家坐标绕地图中心旋转 -90°
+  function base(x, y) {
+    const [x0, x1, y0, y1] = SB.bounds, cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
+    if (SB.rot) { const r = SB.rot * Math.PI / 180, dx = x - cx, dy = y - cy; x = cx + dx * Math.cos(r) - dy * Math.sin(r); y = cy + dx * Math.sin(r) + dy * Math.cos(r); }
+    return [(x - x0) / (x1 - x0), (y1 - y) / (y1 - y0)]; // 0..1
+  }
+  function view() { const [W, H] = [cv.clientWidth, cv.clientHeight], s = Math.min(W, H) * SB.zoom; return { s, ox: (W - s) / 2 + SB.panX, oy: (H - s) / 2 + SB.panY }; }
+  const scr = (u, v, V) => [V.ox + u * V.s, V.oy + v * V.s];
+  function fitToPlayers() {
+    const us = [], vs = [];
+    SB.people.forEach(p => { if (!SB.onMap(p.id)) return; p.X.forEach((x, k) => { const [u, v] = base(x, p.Y[k]); us.push(u); vs.push(v); }); });
+    if (!us.length) return;
+    us.sort((a, b) => a - b); vs.sort((a, b) => a - b);
+    const q = (a, f) => a[Math.min(a.length - 1, Math.floor(a.length * f))];
+    const u0 = q(us, .05), u1 = q(us, .95), v0 = q(vs, .05), v1 = q(vs, .95);
+    const span = Math.max(u1 - u0, v1 - v0, 0.03) * 1.5; SB.zoom = Math.max(1, Math.min(20, 1 / span));
+    const W = cv.clientWidth, H = cv.clientHeight, s = Math.min(W, H) * SB.zoom;
+    SB.panX = -(((u0 + u1) / 2) * s - s / 2); SB.panY = -(((v0 + v1) / 2) * s - s / 2);
+  }
+  function posAt(p, t) { // 最近一个不晚于 t 的采样；超过 20 秒没更新就不画
+    const T = p.T; if (!T.length || T[0] > t) return null;
+    let lo = 0, hi = T.length - 1; while (lo < hi) { const m = (lo + hi + 1) >> 1; if (T[m] <= t) lo = m; else hi = m - 1; }
+    if (t - T[lo] > 20) return null; return lo;
+  }
+  function draw() {
+    const [W, H] = size(); ctx.fillStyle = '#060b14'; ctx.fillRect(0, 0, W, H);
+    if (!SB.tr) { ctx.fillStyle = '#8c9db4'; ctx.font = '14px sans-serif'; ctx.fillText(battles.length ? '选择场次后开始回放' : '这一天没有战斗', 20, 30); return; }
+    const V = view();
+    if (SB.img) { ctx.globalAlpha = .93; ctx.drawImage(SB.img, V.ox, V.oy, V.s, V.s); ctx.globalAlpha = 1; }
+    else { ctx.strokeStyle = '#16223a'; for (let g = 0; g <= 10; g++) { const a = scr(g / 10, 0, V), b = scr(g / 10, 1, V), c = scr(0, g / 10, V), d = scr(1, g / 10, V);
+      ctx.beginPath(); ctx.moveTo(...a); ctx.lineTo(...b); ctx.moveTo(...c); ctx.lineTo(...d); ctx.stroke(); } }
+    const show = { 0: $('#sbE').checked, 1: $('#sbA').checked, u: $('#sbU').checked }, t = SB.t;
+    SB.pts = []; let ce = 0, ca = 0;
+    for (const p of SB.people) {
+      if (!SB.onMap(p.id)) continue; const ok = p.race === 0 ? show[0] : p.race === 1 ? show[1] : show.u; if (!ok) continue;
+      const k = posAt(p, t); if (k === null) continue;
+      const col = RCOL[p.race] || UCOL;
+      const [x, y] = scr(...base(p.X[k], p.Y[k]), V);
+      ctx.fillStyle = col; ctx.beginPath(); ctx.arc(x, y, 4, 0, 7); ctx.fill(); ctx.strokeStyle = '#000'; ctx.lineWidth = 1; ctx.stroke();
+      if ($('#sbNames').checked) { ctx.fillStyle = '#e6eef8'; ctx.font = '11px sans-serif'; ctx.fillText(p.name, x + 6, y - 4); }
+      SB.pts.push({ x, y, p }); if (p.race === 0) ce++; else if (p.race === 1) ca++;
+    }
+    if ($('#sbDeath').checked) { ctx.strokeStyle = '#ef4444'; ctx.lineWidth = 2;
+      for (const d of SB.deaths) { if (d.t > t || t - d.t > 15) continue; const k = posAt(d.p, d.t) ?? posAt(d.p, d.t + 20); if (k === null) continue;
+        const [x, y] = scr(...base(d.p.X[k], d.p.Y[k]), V); ctx.globalAlpha = 1 - (t - d.t) / 15;
+        ctx.beginPath(); ctx.moveTo(x - 5, y - 5); ctx.lineTo(x + 5, y + 5); ctx.moveTo(x + 5, y - 5); ctx.lineTo(x - 5, y + 5); ctx.stroke(); ctx.globalAlpha = 1; } }
+    const kills = SB.b.kills.filter(k => k.t <= t).length;
+    $('#sbTime').innerHTML = `${mmss(t)} / ${mmss(SB.tr.duration)} · <span class="ely">天族 ${ce}</span> · <span class="asm">魔族 ${ca}</span> · <span class="dead">阵亡 ${kills}</span>`;
+    $('#sbSlider').value = Math.floor(t);
+  }
+  function tick(ts) {
+    if (SB.playing && SB.tr) { const dt = SB.last ? (ts - SB.last) / 1000 : 0; SB.t = Math.min(SB.tr.duration, SB.t + dt * +$('#sbSpeed').value);
+      if (SB.t >= SB.tr.duration) { SB.playing = false; $('#sbPlay').textContent = '▶ 播放'; } draw(); }
+    SB.last = ts; requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
+  $('#sbPlay').onclick = () => { if (!SB.tr) return; if (SB.t >= SB.tr.duration) SB.t = 0; SB.playing = !SB.playing; $('#sbPlay').textContent = SB.playing ? '⏸ 暂停' : '▶ 播放'; };
+  $('#sbSlider').oninput = e => { SB.t = +e.target.value; draw(); };
+  $('#sbBattle').onchange = e => openSandbox(+e.target.value);
+  $('#sbLayer').onchange = e => setLayer(e.target.value);
+  $('#sbMap').onchange = e => { SB.forceMap = e.target.value; if (!SB.forceMap) SB.forceMap = ''; openSandbox(+$('#sbBattle').value); };
+  ['#sbE', '#sbA', '#sbU', '#sbNames', '#sbDeath'].forEach(s => $(s).onchange = draw);
+  cv.addEventListener('wheel', e => { e.preventDefault(); const r = cv.getBoundingClientRect(), mx = e.clientX - r.left, my = e.clientY - r.top, V = view();
+    const f = e.deltaY < 0 ? 1.2 : 1 / 1.2, nz = Math.max(.5, Math.min(40, SB.zoom * f)), k = nz / SB.zoom;
+    SB.zoom = nz; const W = cv.clientWidth, H = cv.clientHeight, s = Math.min(W, H) * nz;
+    const ox = mx - (mx - V.ox) * k, oy = my - (my - V.oy) * k; SB.panX = ox - (W - s) / 2; SB.panY = oy - (H - s) / 2; draw(); }, { passive: false });
+  let drag = null, pinch = null;
+  cv.addEventListener('pointerdown', e => { drag = { x: e.clientX, y: e.clientY, px: SB.panX, py: SB.panY, moved: false }; cv.setPointerCapture(e.pointerId); });
+  cv.addEventListener('pointermove', e => { if (!drag || pinch) return; const dx = e.clientX - drag.x, dy = e.clientY - drag.y; if (Math.abs(dx) + Math.abs(dy) > 3) drag.moved = true; SB.panX = drag.px + dx; SB.panY = drag.py + dy; draw(); });
+  cv.addEventListener('pointerup', e => { if (drag && !drag.moved) { const r = cv.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top;
+      let best = null, bd = 144; SB.pts.forEach(q => { const d = (q.x - x) ** 2 + (q.y - y) ** 2; if (d < bd) { bd = d; best = q; } });
+      const tip = $('#sbTip'); if (best) { tip.hidden = false; tip.style.left = (best.x + 10) + 'px'; tip.style.top = (best.y + 10) + 'px';
+        tip.innerHTML = `<b>${esc(best.p.name)}</b><br>${esc(best.p.legion)} ${race(best.p.race)}`; } else tip.hidden = true; }
+    drag = null; });
+  cv.addEventListener('touchstart', e => { if (e.touches.length === 2) { const [a, b] = e.touches; pinch = { d: Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY), z: SB.zoom }; } }, { passive: true });
+  cv.addEventListener('touchmove', e => { if (pinch && e.touches.length === 2) { const [a, b] = e.touches; SB.zoom = Math.max(.5, Math.min(40, pinch.z * Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY) / pinch.d)); draw(); } }, { passive: true });
+  cv.addEventListener('touchend', () => { pinch = null; });
+  window.addEventListener('resize', draw);
+
+  // —— 通用 ——
+  function showTab(name) {
+    document.querySelectorAll('#tabs button, .tab').forEach(x => x.classList.remove('on'));
+    document.querySelector(`#tabs button[data-tab="${name}"]`).classList.add('on'); $('#' + name).classList.add('on');
+    if (name === 'sandbox') { if (!SB.tr && battles.length) openSandbox(+$('#sbBattle').value || 0); else draw(); }
+  }
+  document.querySelectorAll('#tabs button').forEach(b => b.onclick = () => showTab(b.dataset.tab));
+  async function load(d) {
+    $('#summary').innerHTML = '<div class="card">加载中…</div>';
+    const day = await getDay(d);
+    data = JSON.parse(JSON.stringify(day.daily)); battles = day.battles || [];
+    data.players.forEach(enrich); data.legions.forEach(enrich); data.skillPatterns ||= [];
+    byId = {}; data.players.forEach(p => byId[p.id] = p);
+    limit = 100; curBattle = -1; SB.tr = null; fillSandboxSelect(); render();
+    if ($('#sandbox').classList.contains('on') && battles.length) openSandbox(0); else draw();
+    $('#foot').textContent = '数据生成时间：' + (data.generatedAt || '-');
+    history.replaceState(null, '', '#' + d);
+  }
+  ['#q', '#race', '#cls'].forEach(s => $(s).addEventListener('input', () => { limit = 100; render(); }));
+  const fail = err => $('#summary').innerHTML = `<div class="card">${esc(err.message)}</div>`;
+  $('#date').onchange = e => load(e.target.value).catch(fail);
+  const dates = D.index || [];
+  $('#date').innerHTML = dates.map(d => `<option>${d}</option>`).join('');
+  const want = location.hash.slice(1).split('/')[0], wantTab = location.hash.split('/')[1], wantIdx = location.hash.split('/')[2];
+  if (dates.includes(want)) $('#date').value = want;
+  if (dates.length) load($('#date').value).then(() => { if (wantIdx !== undefined && battles[+wantIdx]) { curBattle = +wantIdx; $('#sbBattle').value = wantIdx; renderBattleList(); renderBattleDetail(curBattle); if (wantTab === 'sandbox') openSandbox(curBattle); }
+    if (wantTab) showTab(wantTab); }).catch(fail);
+  else $('#summary').innerHTML = '<div class="card">暂无数据（先运行 publish-daily.ps1）</div>';
+})();

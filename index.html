@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>永恒之塔 战斗数据日报</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <h1>⚔ 永恒之塔 战斗数据日报</h1>
+  <div class="controls">
+    <label>日期 <select id="date"></select></label>
+    <label>阵营 <select id="race"><option value="">全部</option><option value="0">天族</option><option value="1">魔族</option></select></label>
+    <label>职业 <select id="cls"><option value="">全部</option></select></label>
+    <input id="q" type="search" placeholder="搜索角色名 / 军团">
+  </div>
+  <nav id="tabs">
+    <button data-tab="players" class="on">玩家排行</button>
+    <button data-tab="legions">军团排行</button>
+    <button data-tab="classes">职业统计</button>
+    <button data-tab="battles">战斗场次</button>
+    <button data-tab="sandbox">沙盘回放</button>
+    <button data-tab="skills" hidden>技能结构</button>
+  </nav>
+</header>
+<main>
+  <div id="summary" class="cards"></div>
+  <section id="players" class="tab on"><div class="tw"><table id="tp"></table></div><div class="more" id="pm"></div></section>
+  <section id="legions" class="tab"><div class="tw"><table id="tl"></table></div></section>
+  <section id="classes" class="tab"><div class="tw"><table id="tc"></table></div></section>
+  <section id="battles" class="tab">
+    <div id="blist" class="blist"></div>
+    <div id="bdetail"></div>
+  </section>
+  <section id="sandbox" class="tab">
+    <div class="sbbar">
+      <label>场次 <select id="sbBattle"></select></label>
+      <label>地图 <select id="sbMap"></select></label>
+      <label>层 <select id="sbLayer"></select></label>
+      <button id="sbPlay">▶ 播放</button>
+      <label>速度 <select id="sbSpeed"><option>1</option><option>5</option><option selected>10</option><option>30</option><option>60</option></select>×</label>
+      <span id="sbTime" class="sbtime">00:00</span>
+    </div>
+    <input id="sbSlider" type="range" min="0" max="100" value="0" step="1">
+    <div class="sbwrap"><canvas id="sbCanvas"></canvas><div id="sbTip" class="tip" hidden></div></div>
+    <div class="sbbar small">
+      <label><input type="checkbox" id="sbE" checked> <span class="ely">● 天族</span></label>
+      <label><input type="checkbox" id="sbA" checked> <span class="asm">● 魔族</span></label>
+      <label><input type="checkbox" id="sbU" checked> <span class="unk">● 未识别阵营</span></label>
+      <label><input type="checkbox" id="sbNames"> 显示名字</label>
+      <label><input type="checkbox" id="sbDeath" checked> <span class="dead">✕ 阵亡</span></label>
+      <span id="sbInfo" class="note"></span>
+    </div>
+    <p class="note">滚轮/双指缩放，拖动平移，点人物看名字。坐标来自抓包位置帧，地图对齐沿用水表沙盘的默认方式（玩家坐标绕地图中心旋转 -90°）。</p>
+  </section>
+  <section id="skills" class="tab"><p class="note">协议层面的伤害记录结构统计。</p><div class="tw"><table id="ts"></table></div></section>
+  <p class="note">数据来自水表解析的“候选值”，PvP/PvE 合计 = 技能 + 普攻；为解析统计，非游戏官方数值。时间为北京时间。</p>
+</main>
+<footer id="foot"></footer>
+<script src="data/bundle.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
