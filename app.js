@@ -288,7 +288,7 @@
     if (!sk.length) return '<p class="note">无</p>';
     const pct = (a, b) => b ? (100 * a / b).toFixed(1) + '%' : '-';
     return `<div class="pf-scroll"><table class="kv pf-skills"><tr><th class="t">技能</th><th>总伤害</th><th>PvP</th><th>PvE</th><th>命中</th><th>暴击率</th><th>平均</th><th>最大</th></tr>${sk.map(s => { const tot = s[1] + s[2], n = s[3] + s[4];
-      return `<tr><td class="t" title="技能ID ${s[0]}">${s[0] === 0 ? '普攻' : esc((window.AION_SKILLNAMES || {})[s[0]] || '#' + s[0])}</td><td>${fmt(tot)}</td><td>${fmt(s[1])}</td><td>${fmt(s[2])}</td><td>${fmt(n)}</td><td>${s[0] === 0 ? '-' : pct(s[6], s[5])}</td><td>${fmt(n ? Math.round(tot / n) : 0)}</td><td>${fmt(s[7])}</td></tr>`; }).join('')}</table></div>`;
+      return `<tr><td class="t" title="技能ID ${s[0]}">${sic(s[0])}${s[0] === 0 ? '普攻' : esc((window.AION_SKILLNAMES || {})[s[0]] || '#' + s[0])}</td><td>${fmt(tot)}</td><td>${fmt(s[1])}</td><td>${fmt(s[2])}</td><td>${fmt(n)}</td><td>${s[0] === 0 ? '-' : pct(s[6], s[5])}</td><td>${fmt(n ? Math.round(tot / n) : 0)}</td><td>${fmt(s[7])}</td></tr>`; }).join('')}</table></div>`;
   }
   async function getRel(d, id) { const n = id % 16; if (!(window.AION_REL && window.AION_REL[d] && window.AION_REL[d][n])) await loadScript(`${DP}rel/${d}/${n}.js`); return window.AION_REL[d][n][id] || {}; }
   // 关系列表（组件）：rows=[[id,值,次数]] 或击杀 [[名字,id,[时间...]]]
@@ -301,6 +301,25 @@
     if (!rows || !rows.length) return `<h4>${title}</h4><p class="note">无</p>`;
     return `<h4>${title}（${rows.reduce((s, r) => s + r[2].length, 0)}）</h4><div class="pf-scroll pf-rel"><table class="kv"><tr><th class="t">玩家</th><th>次数</th><th class="t">时间</th></tr>${rows.map(r => `<tr><td class="t">${r[1] ? pnm(r[1], r[0]) : esc(r[0])}</td><td>${r[2].length}</td><td class="t tm">${r[2].map(s => hms(s)).join(' ')}</td></tr>`).join('')}</table></div>`;
   }
+  // —— 资料卡扩展（施法/攻击结果/增益减益/外观/阵亡/NPC），按需加载 ——
+  async function getPx(d, id) { const n = id % 16; try { await loadScript('img/sk/ids.js'); } catch {}
+    try { if (!(window.AION_PXN && window.AION_PXN[d])) await loadScript(`${DP}px/${d}/names.js`); if (!(window.AION_PX && window.AION_PX[d] && window.AION_PX[d][n])) await loadScript(`${DP}px/${d}/${n}.js`); } catch { return {}; }
+    return window.AION_PX[d][n][id] || {}; }
+  const sic = id => window.AION_SKICON && window.AION_SKICON.has(+id) ? `<img class="si" src="img/sk/${id}.png" width="20" height="20" loading="lazy" alt="">` : '';
+  const skn = (id, d) => esc((window.AION_SKILLNAMES || {})[id] || ((window.AION_PXN || {})[d] || {})[id] || '#' + id);
+  function pxHtml(x, d) {
+    const sec = (t, body, open) => `<details class="pxs"${open ? ' open' : ''}><summary>${t}</summary>${body}</details>`;
+    let h = '';
+    if (x.c) h += sec(`施法 ${fmt(x.c[0])} 次 · 被打断 ${fmt(x.c[1])} 次`, `<div class="pf-scroll"><table class="kv"><tr><th class="t">技能</th><th>施放</th><th>被打断</th></tr>${x.c[2].map(s => `<tr><td class="t">${sic(s[0])}${skn(s[0], d)}</td><td>${fmt(s[1])}</td><td>${fmt(s[2])}</td></tr>`).join('')}</table></div>`);
+    if (x.ra || x.rr) { const L = ['普通', '暴击', '招架', '格挡', '闪避', '抵抗'], r = v => (v || [0, 0, 0, 0, 0, 0]).map(n => `<td>${fmt(n)}</td>`).join('');
+      h += sec('攻击结果（PvP 技能）', `<table class="kv"><tr><th class="t"></th>${L.map(l => `<th>${l}</th>`).join('')}</tr><tr><td class="t">打出</td>${r(x.ra)}</tr><tr><td class="t">受到</td>${r(x.rr)}</tr></table>`); }
+    if (x.bf) h += sec(`受到的增益/减益（${x.bf.length}）`, `<div class="pf-scroll"><table class="kv"><tr><th class="t">效果</th><th>类型</th><th>槽位</th><th>次数</th><th class="t">主要来源</th></tr>${x.bf.map(b => `<tr><td class="t">${sic(b[0])}${skn(b[0], d)}</td><td class="${b[2] === 2 ? 'dead' : ''}">${['-', '增益', '减益'][b[2]]}</td><td>${b[1]}</td><td>${fmt(b[3])}</td><td class="t">${esc(b[4])}</td></tr>`).join('')}</table></div>`);
+    if (x.e) h += sec(`外观装备（${x.e.length}）`, `<div class="pf-chips">${x.e.map(i => `<span>${i}</span>`).join('')}</div>`);
+    if (x.d) h += sec(`阵亡记录（${x.d.reduce((s, k) => s + k[1], 0)}）`, `<table class="kv"><tr><th class="t">击杀者</th><th>次数</th></tr>${x.d.map(k => `<tr><td class="t">${byName[k[0]] !== undefined ? pnm(byName[k[0]], k[0]) : esc(k[0])}</td><td>${k[1]}</td></tr>`).join('')}</table>`);
+    if (x.n) h += sec(`被 NPC 盯住（${x.n.length}）`, `<table class="kv"><tr><th class="t">NPC 模板</th><th>次数</th></tr>${x.n.map(k => `<tr><td class="t">${esc(k[0])}</td><td>${fmt(k[1])}</td></tr>`).join('')}</table>`);
+    return h;
+  }
+  let byName = {};
   function revTable(title, rows) {
     if (!rows || !rows.length) return `<h4>${title}</h4><p class="note">无</p>`;
     return `<h4>${title}（${rows.reduce((s, r) => s + r[2], 0)}次）</h4><div class="pf-scroll pf-rel"><table class="kv"><tr><th class="t">玩家</th><th>复活</th></tr>${rows.map(r => `<tr><td class="t">${r[1] ? pnm(r[1], r[0]) : esc(r[0])}</td><td>${r[2]}</td></tr>`).join('')}</table></div>`;
@@ -317,6 +336,7 @@
       return (d || k || v) ? { i, b, pvp: d ? d.pvpSkill + d.pvpAuto : 0, tk: d ? d.taken || 0 : 0, pve: d ? d.pveSkill + d.pveAuto : 0, k, v } : null; }).filter(Boolean);
     let sk = []; try { sk = await getSk(data.date, id); } catch {}
     let rl = {}; try { rl = await getRel(data.date, id); } catch {}
+    const px = await getPx(data.date, id); byName = {}; data.players.forEach(q => { if (!(q.name in byName)) byName[q.name] = q.id; });
     const days = (pl && pl[p.name + '|' + p.race]) || [];
     const row = (a, b) => `<tr><td class="t">${a}</td><td>${b}</td></tr>`;
     inner.innerHTML = `<button class="px">✕</button><h2>${esc(p.name)} ${race(p.race)}</h2>
@@ -324,6 +344,7 @@
       <h4>当天伤害</h4><table class="kv">${row('PvP 技能', fmt(p.pvpSkill))}${row('PvP 普攻', fmt(p.pvpAuto))}${row('PvP 承伤', fmt(p.taken))}${row('PvE 技能', fmt(p.pveSkill))}${row('PvE 普攻', fmt(p.pveAuto))}${row('击杀 / 阵亡', `${kd[0]} / <span class="dead">${kd[1]}</span>`)}</table>
       <h4>参与的战斗（${bt.length}）</h4>${bt.length ? `<div class="pf-scroll"><table class="kv"><tr><th class="t">场次</th><th>PvP</th><th>PvP承伤</th><th>PvE</th><th>击杀</th><th>阵亡</th></tr>${bt.map(x => `<tr><td class="t"><a href="#" data-b="${x.i}">第 ${x.b.no} 场 ${hm(x.b.start)} ${esc(mapName(x.b.map))}</a></td><td>${fmt(x.pvp)}</td><td>${fmt(x.tk)}</td><td>${fmt(x.pve)}</td><td>${x.k}</td><td>${x.v}</td></tr>`).join('')}</table></div>` : '<p class="note">无</p>'}
       <h4>使用的技能</h4>${skillTable(sk)}
+      ${pxHtml(px, data.date)}
       ${relTable('攻击了谁（PvP）', rl.a, ['伤害', '命中'])}${relTable('被谁攻击（PvP）', rl.b, ['伤害', '命中'])}
       ${killTable('击杀了谁', rl.k)}${killTable('被谁击杀', rl.kb)}${relTable('被谁治疗', rl.h, ['治疗量', '次数'])}${revTable('复活了谁', rl.rv)}${revTable('被谁复活', rl.rb)}
       <h4>出现过的日期（${days.length}）</h4>${days.length ? `<table class="kv"><tr><th class="t">日期</th><th>PvP</th><th>PvE</th></tr>${days.map(x => `<tr><td class="t"><a href="#" data-d="${x[0]}" data-id="${x[1]}">${x[0]}</a></td><td>${fmt(x[2])}</td><td>${fmt(x[3])}</td></tr>`).join('')}</table>` : '<p class="note">-</p>'}`;

@@ -355,7 +355,7 @@ public static class AionBattleExtract
             }
             object Top(Dictionary<int, Dictionary<int, long[]>> d, int id) => d.TryGetValue(id, out var m) ? m.OrderByDescending(x => x.Value[0]).Take(30).Select(x => new object[] { x.Key, x.Value[0], x.Value[1], pname.GetValueOrDefault(x.Key, "") }).ToList() : null!;
             object Kl(Dictionary<int, Dictionary<string, List<long>>> d, int id) => d.TryGetValue(id, out var m) ? m.OrderByDescending(x => x.Value.Count).Take(30).Select(x => new object[] { x.Key, nameToId.TryGetValue(x.Key, out var oi) ? oi : 0, x.Value }).ToList() : null!;
-            // 复活：AionCaptureReview x-revives.csv（0x0021 复活技能+目标；0x002A 中断的不算）
+            // 复活：AionCaptureReview x-revives.csv（0x0021 复活读条未被 0x002A 中断，且被复活者 60 秒内出现 0x0025 类型19 复活动作）
             var rv = new Dictionary<int, Dictionary<string, int>>(); var rvb = new Dictionary<int, Dictionary<string, int>>(); int nRev = 0;
             string? rf = null;
             if (hitsPath != null) { var hd = Path.GetDirectoryName(Path.GetFullPath(hitsPath))!; var fn = Path.GetFileName(hitsPath).Replace("x-ledger-hits.csv", "x-revives.csv");
@@ -363,7 +363,7 @@ public static class AionBattleExtract
             if (rf != null)
                 foreach (var l in File.ReadLines(rf, Encoding.UTF8).Skip(1))
                 {
-                    var q = l.Split(','); if (q.Length < 9 || !q[8].StartsWith("读条完成")) continue;
+                    var q = l.Split(','); if (q.Length < 10 || !q[8].StartsWith("读条完成") || !double.TryParse(q[9], NumberStyles.Float, CultureInfo.InvariantCulture, out var rsec) || rsec > 60) continue;   // 确认复活：读条未中断 + 对方 60 秒内 0x0025 类型19
                     string cn = q[1], tn = q[5]; if (cn.Length == 0 || tn.Length == 0 || cn == tn) continue; nRev++;
                     if (nameToId.TryGetValue(cn, out var ci)) { if (!rv.TryGetValue(ci, out var r1)) rv[ci] = r1 = new(); r1[tn] = r1.GetValueOrDefault(tn) + 1; S(ci)[3]++; }
                     if (nameToId.TryGetValue(tn, out var ti)) { if (!rvb.TryGetValue(ti, out var r2)) rvb[ti] = r2 = new(); r2[cn] = r2.GetValueOrDefault(cn) + 1; S(ti)[4]++; }

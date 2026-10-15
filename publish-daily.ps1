@@ -19,6 +19,8 @@ param(
   [switch]$NoBattles,           # 跳过分场/沙盘（只发布日汇总）
   [double]$TrackSampleSec = 3,  # 沙盘轨迹采样间隔（秒）
   [string]$SkillTable = 'F:\Aion-Project\CB-CaoBattle\Program\Data\aion_skills_cn.json',   # 客户端技能表（中文名）；不用 MyAion 协议映射表
+  [string]$ExtrasDir = 'F:\GB-AionLive\AionCaptureReview\Out',   # AionCaptureReview 协议补充输出（x-casts/x-buffs/x-equip/x-deaths/x-npc-target/x-revives）
+  [string]$IconDds = 'C:\Users\Cassen\aion_work\dds',   # 客户端 skills.pak 解出的技能图标 DDS
   [string]$LedgerDir = 'F:\GB-AionLive\AionCaptureReview\Out\ledger'   # AionCaptureReview 统一账本输出（x-ledger-*.csv）
 )
 #Requires -Version 7
@@ -104,6 +106,8 @@ function Publish-Battles([string]$d, [string]$iso, [string]$base, [string]$hitsP
   [IO.File]::WriteAllLines((Join-Path $Site 'tools\day-race.tsv'), $rl, $Utf8)
   $log = [AionBattleExtract]::Run($facts, @($frames | Where-Object { $_ }), (Join-Path $ReleaseDir 'npc-map-anchors.tsv'),
     (Join-Path $ReleaseDir 'mapbounds.tsv'), $DataDir, $iso, $TrackSampleSec, $hitsPath)
+  $xb = "$base."; if (-not (Test-Path "$($xb)x-casts-0021.csv")) { $xb = Join-Path $ExtrasDir (Split-Path "$base." -Leaf) }
+  & node (Join-Path $Site 'tools\build-pextra.js') $DataDir $iso $xb $facts $SkillTable | ForEach-Object { Write-Host "  $_" }
   $log -split "`n" | Where-Object { $_ -notmatch '^MAPS:' } | ForEach-Object { Write-Host "  $_" }
   if ($log -match 'SKIP_DAY:') {
     Write-Host "  跳过 $iso：没有参战人数 > 50 的战斗，不发布这一天。"
@@ -170,6 +174,9 @@ foreach ($m in ($script:MapsUsed | Sort-Object -Unique)) {
   $mapInfo[$m] = [ordered]@{ name = ($nameTbl[$m] ?? $m); bounds = $boundsTbl[$m]; layers = $layers }
 }
 [IO.File]::WriteAllText($prevMaps, (ConvertTo-Json $mapInfo -Depth 5), $Utf8)
+
+# 技能图标（只转网站数据里出现过的技能；已有的跳过）
+if (Test-Path $IconDds) { & node (Join-Path $Site 'tools\build-icons.js') $Site $SkillTable $IconDds | ForEach-Object { Write-Host $_ } }
 
 # 每天一个数据脚本 data/day/YYYY-MM-DD.js（日汇总 + 战斗列表），bundle.js 只放索引和地图表，
 # 这样双击 index.html（file://）也能用 <script> 按需加载，不必一次装入所有日期。
