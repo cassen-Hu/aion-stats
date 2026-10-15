@@ -1,4 +1,4 @@
-#nullable enable
+﻿#nullable enable
 // 从本地 facts.csv + 解码帧 ndjson 推导“每场战斗”与沙盘轨迹。
 // 只输出白名单聚合：时间、时长、人员(PersonIndex/名字)、伤害、击杀名字、坐标。
 // Observer / Session / ObjectId / PayloadSHA256 只在本地内存中用于关联，绝不写出。
@@ -18,7 +18,7 @@ public static class AionBattleExtract
     sealed class Hit { public DateTime T; public int A, Tg, Sk, Mk = -1; public long Amt; public bool Auto; }
     sealed class Battle
     {
-        public DateTime S, E; public List<Kill> Kills = new(); public Dictionary<int, long[]> Dmg = new();
+        public DateTime S, E; public List<Kill> Kills = new(); public Dictionary<int, long[]> Dmg = new(); public Dictionary<int, long> Tk = new();
         public Dictionary<int, List<float>> Trk = new(); public Dictionary<int, double> LastT = new();
         public Dictionary<string, HashSet<uint>> MapVotes = new();
         public Dictionary<string, Dictionary<string, HashSet<uint>>> SessVotes = new(); public Dictionary<int, Dictionary<string, int>> PSess = new();
@@ -158,6 +158,7 @@ public static class AionBattleExtract
             var b = Find(h.T); if (b == null) continue;
             if (!b.Dmg.TryGetValue(h.A, out var d)) b.Dmg[h.A] = d = new long[4];
             int idx = (h.Tg > 0 ? 0 : 2) + (h.Auto ? 1 : 0); d[idx] += h.Amt;
+            if (h.Tg > 0 && h.Tg != h.A) b.Tk[h.Tg] = b.Tk.GetValueOrDefault(h.Tg) + h.Amt;   // PvP承伤
         }
 
                 // 只保留参战人数（本场有 PvP 伤害的 distinct PersonIndex）> 50 的战斗；不够的场次整场丢弃
@@ -287,7 +288,7 @@ public static class AionBattleExtract
             var mapCounts = map.Length > 0 ? new[] { new { map, players = b.Trk.Count } }.ToList() : new[] { new { map = "", players = 0 } }.Take(0).ToList();
             var candidates = cand.Select(kv => new { map = kv.Key, players = kv.Value }).OrderByDescending(x => x.players).ToList();
             if (map.Length > 0) mapsUsed.Add(map);
-            var dmg = b.Dmg.Select(kv => new { id = kv.Key, pvpSkill = kv.Value[0], pvpAuto = kv.Value[1], pveSkill = kv.Value[2], pveAuto = kv.Value[3] }).ToList();
+            var dmg = b.Dmg.Keys.Union(b.Tk.Keys).Select(id => { var v = b.Dmg.GetValueOrDefault(id) ?? new long[4]; return new { id, pvpSkill = v[0], pvpAuto = v[1], pveSkill = v[2], pveAuto = v[3], taken = b.Tk.GetValueOrDefault(id) }; }).ToList();
             string key = $"{date}-b{n}";
             summary.Add(new
             {
@@ -318,14 +319,14 @@ public static class AionBattleExtract
         Directory.CreateDirectory(Path.Combine(outDir, "prof"));
         var aoe = new HashSet<int>(); var aof = Path.Combine(SiteRoot(outDir), "tools", "aoe-skills.txt");
         if (File.Exists(aof)) foreach (var l in File.ReadLines(aof)) if (int.TryParse(l.Trim(), out var ai)) aoe.Add(ai);
-        var pst = new Dictionary<int, long[]>();   // [PvP受到, 治疗量, AOE PvP伤害]
-        long[] S(int id) { if (!pst.TryGetValue(id, out var v)) pst[id] = v = new long[3]; return v; }
+        var pst = new Dictionary<int, long[]>(); // 注：[3][4] 在关系段填入，prof 在其后写出
+        string profPath = Path.Combine(outDir, "prof", date + ".js");   // [PvP受到, 治疗量, AOE PvP伤害]
+        long[] S(int id) { if (!pst.TryGetValue(id, out var v)) pst[id] = v = new long[5]; return v; }   // +[3]复活他人 [4]被复活
         foreach (var h in hits) { if (h.Tg <= 0) continue; S(h.Tg)[0] += h.Amt; if (!h.Auto && aoe.Contains(h.Sk)) S(h.A)[2] += h.Amt; }
         foreach (var h in heals) S(h.A)[1] += h.Amt;
         var rkOut = new Dictionary<string, int[]>();
         foreach (var kv in pname) if (identRank.TryGetValue(kv.Value, out var r0)) rkOut[kv.Key.ToString()] = new[] { r0, identLv.GetValueOrDefault(kv.Value, 0) };
         log.AppendLine($"身份帧：军阶 {identRank.Count} 人，其中 ≥14 共 {identRank.Count(x => x.Value >= 14)} 人；AOE 技能表 {aoe.Count} 个");
-        File.WriteAllText(Path.Combine(outDir, "prof", date + ".js"), "(window.AION_PROF=window.AION_PROF||{})[" + JsonSerializer.Serialize(date) + "]=" + JsonSerializer.Serialize(new { kd, st = pst.ToDictionary(x => x.Key.ToString(), x => x.Value), rk = rkOut }, opts) + ";", new UTF8Encoding(false));
         var skDir = Path.Combine(outDir, "sk", date); if (Directory.Exists(skDir)) Directory.Delete(skDir, true); Directory.CreateDirectory(skDir);
         for (int sh = 0; sh < 16; sh++)
         {
@@ -354,16 +355,32 @@ public static class AionBattleExtract
             }
             object Top(Dictionary<int, Dictionary<int, long[]>> d, int id) => d.TryGetValue(id, out var m) ? m.OrderByDescending(x => x.Value[0]).Take(30).Select(x => new object[] { x.Key, x.Value[0], x.Value[1], pname.GetValueOrDefault(x.Key, "") }).ToList() : null!;
             object Kl(Dictionary<int, Dictionary<string, List<long>>> d, int id) => d.TryGetValue(id, out var m) ? m.OrderByDescending(x => x.Value.Count).Take(30).Select(x => new object[] { x.Key, nameToId.TryGetValue(x.Key, out var oi) ? oi : 0, x.Value }).ToList() : null!;
-            var ids = new HashSet<int>(att.Keys.Concat(by.Keys).Concat(hb.Keys).Concat(kl.Keys).Concat(kbl.Keys));
+            // 复活：AionCaptureReview x-revives.csv（0x0021 复活技能+目标；0x002A 中断的不算）
+            var rv = new Dictionary<int, Dictionary<string, int>>(); var rvb = new Dictionary<int, Dictionary<string, int>>(); int nRev = 0;
+            string? rf = null;
+            if (hitsPath != null) { var hd = Path.GetDirectoryName(Path.GetFullPath(hitsPath))!; var fn = Path.GetFileName(hitsPath).Replace("x-ledger-hits.csv", "x-revives.csv");
+                foreach (var cand in new[] { Path.Combine(hd, fn), Path.Combine(Path.GetDirectoryName(hd)!, fn) }) if (File.Exists(cand)) { rf = cand; break; } }
+            if (rf != null)
+                foreach (var l in File.ReadLines(rf, Encoding.UTF8).Skip(1))
+                {
+                    var q = l.Split(','); if (q.Length < 9 || !q[8].StartsWith("读条完成")) continue;
+                    string cn = q[1], tn = q[5]; if (cn.Length == 0 || tn.Length == 0 || cn == tn) continue; nRev++;
+                    if (nameToId.TryGetValue(cn, out var ci)) { if (!rv.TryGetValue(ci, out var r1)) rv[ci] = r1 = new(); r1[tn] = r1.GetValueOrDefault(tn) + 1; S(ci)[3]++; }
+                    if (nameToId.TryGetValue(tn, out var ti)) { if (!rvb.TryGetValue(ti, out var r2)) rvb[ti] = r2 = new(); r2[cn] = r2.GetValueOrDefault(cn) + 1; S(ti)[4]++; }
+                }
+            log.AppendLine(rf == null ? "复活：没有 x-revives.csv" : $"复活：{nRev} 次（未被中断），{Path.GetFileName(rf)}");
+            object Rv(Dictionary<int, Dictionary<string, int>> d, int id) => d.TryGetValue(id, out var m) ? m.OrderByDescending(x => x.Value).Take(30).Select(x => new object[] { x.Key, nameToId.TryGetValue(x.Key, out var oi) ? oi : 0, x.Value }).ToList() : null!;
+            var ids = new HashSet<int>(rv.Keys.Union(rvb.Keys).Union(att.Keys.Concat(by.Keys).Concat(hb.Keys).Concat(kl.Keys).Concat(kbl.Keys)));
             var relDir = Path.Combine(outDir, "rel", date); if (Directory.Exists(relDir)) Directory.Delete(relDir, true); Directory.CreateDirectory(relDir);
             var ropts = new JsonSerializerOptions { Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping, DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull };
             for (int sh = 0; sh < 16; sh++)
             {
-                var part = ids.Where(i => i % 16 == sh).ToDictionary(i => i.ToString(), i => new { a = Top(att, i), b = Top(by, i), h = Top(hb, i), k = Kl(kl, i), kb = Kl(kbl, i) });
+                var part = ids.Where(i => i % 16 == sh).ToDictionary(i => i.ToString(), i => new { a = Top(att, i), b = Top(by, i), h = Top(hb, i), k = Kl(kl, i), kb = Kl(kbl, i), rv = Rv(rv, i), rb = Rv(rvb, i) });
                 File.WriteAllText(Path.Combine(relDir, sh + ".js"), "((window.AION_REL=window.AION_REL||{})[" + JsonSerializer.Serialize(date) + "]||(window.AION_REL[" + JsonSerializer.Serialize(date) + "]={}))[" + sh + "]=" + JsonSerializer.Serialize(part, ropts) + ";", new UTF8Encoding(false));
             }
             log.AppendLine($"关系：{ids.Count} 人；治疗记录 {heals.Count}（去重、排除自疗/回蓝）");
         }
+        File.WriteAllText(profPath, "(window.AION_PROF=window.AION_PROF||{})[" + JsonSerializer.Serialize(date) + "]=" + JsonSerializer.Serialize(new { kd, st = pst.ToDictionary(x => x.Key.ToString(), x => x.Value), rk = rkOut }, opts) + ";", new UTF8Encoding(false));
         File.WriteAllText(Path.Combine(outDir, date + ".battles.json"), JsonSerializer.Serialize(summary, opts), new UTF8Encoding(false));
         log.AppendLine($"战斗 {battles.Count} 场；地图 {string.Join(",", mapsUsed)}");
         log.Append("MAPS:" + string.Join(",", mapsUsed));
