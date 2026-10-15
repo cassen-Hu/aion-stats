@@ -311,8 +311,9 @@
     const sec = (t, body, open) => `<details class="pxs"${open ? ' open' : ''}><summary>${t}</summary>${body}</details>`;
     let h = '';
     if (x.c) h += sec(`施法 ${fmt(x.c[0])} 次 · 被打断 ${fmt(x.c[1])} 次`, `<div class="pf-scroll"><table class="kv"><tr><th class="t">技能</th><th>施放</th><th>被打断</th></tr>${x.c[2].map(s => `<tr><td class="t">${sic(s[0])}${skn(s[0], d)}</td><td>${fmt(s[1])}</td><td>${fmt(s[2])}</td></tr>`).join('')}</table></div>`);
-    if (x.ra || x.rr) { const L = ['普通', '暴击', '招架', '格挡', '闪避', '抵抗'], r = v => (v || [0, 0, 0, 0, 0, 0]).map(n => `<td>${fmt(n)}</td>`).join('');
-      h += sec('攻击结果（PvP 技能）', `<table class="kv"><tr><th class="t"></th>${L.map(l => `<th>${l}</th>`).join('')}</tr><tr><td class="t">打出</td>${r(x.ra)}</tr><tr><td class="t">受到</td>${r(x.rr)}</tr></table>`); }
+    if (x.ra || x.rr || x.cc) { const L = ['普通', '暴击', '格挡', '闪避', '抵抗'], I = [0, 1, 3, 4, 5], r = v => I.map(i => `<td>${fmt((v || [])[i] || 0)}</td>`).join('');
+      h += sec('攻击结果与被控制', `<table class="kv"><tr><th class="t">PvP 技能</th>${L.map(l => `<th>${l}</th>`).join('')}</tr><tr><td class="t">打出</td>${r(x.ra)}</tr><tr><td class="t">受到</td>${r(x.rr)}</tr></table>
+        <table class="kv"><tr><th class="t">被控制</th><th>击倒</th><th>麻痹</th><th>沉默</th><th>失明</th></tr><tr><td class="t">次数</td>${(x.cc || [0, 0, 0, 0]).map(n => `<td>${fmt(n)}</td>`).join('')}</tr></table>`, true); }
     if (x.bf) h += sec(`受到的增益/减益（${x.bf.length}）`, `<div class="pf-scroll"><table class="kv"><tr><th class="t">效果</th><th>类型</th><th>槽位</th><th>次数</th><th class="t">主要来源</th></tr>${x.bf.map(b => `<tr><td class="t">${sic(b[0])}${skn(b[0], d)}</td><td class="${b[2] === 2 ? 'dead' : ''}">${['-', '增益', '减益'][b[2]]}</td><td>${b[1]}</td><td>${fmt(b[3])}</td><td class="t">${esc(b[4])}</td></tr>`).join('')}</table></div>`);
     if (x.e) h += sec(`外观装备（${x.e.length}）`, `<div class="pf-chips">${x.e.map(i => `<span>${i}</span>`).join('')}</div>`);
     if (x.d) h += sec(`阵亡记录（${x.d.reduce((s, k) => s + k[1], 0)}）`, `<table class="kv"><tr><th class="t">击杀者</th><th>次数</th></tr>${x.d.map(k => `<tr><td class="t">${byName[k[0]] !== undefined ? pnm(byName[k[0]], k[0]) : esc(k[0])}</td><td>${k[1]}</td></tr>`).join('')}</table>`);

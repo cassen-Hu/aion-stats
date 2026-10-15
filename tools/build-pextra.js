@@ -5,14 +5,19 @@ const fs = require('fs'), vm = require('vm'), path = require('path'), readline =
 const [dataDir, date, base, factsPath, skillsJson] = process.argv.slice(2);
 const w = {}; vm.runInNewContext(fs.readFileSync(path.join(dataDir, 'day', date + '.js'), 'utf8'), { window: w });
 const day = Object.values(w.AION_DAYS)[0].daily, byName = {}; day.players.forEach(p => { if (!(p.name in byName)) byName[p.name] = p.id; });
-const SK = {}; try { JSON.parse(fs.readFileSync(skillsJson, 'utf8').replace(/^\uFEFF/, '')).forEach(s => { SK[s.SkillId] = [s.ChineseName || '', s.Icon || '']; }); } catch {}
+// 控制类状态：按 aion_skills_cn.json 每个技能 Effects[].Type 归类（大小写不敏感；Buff* 是自身防护效果，不算）
+// 0=击倒 Stumble　1=麻痹 Paralyze/Stun　2=沉默 Silence　3=失明 Blind
+const CCT = { stumble: 0, paralyze: 1, stun: 1, silence: 2, blind: 3 };
+const SK = {}, CC = {}; try { JSON.parse(fs.readFileSync(skillsJson, 'utf8').replace(/^\uFEFF/, '')).forEach(s => { SK[s.SkillId] = [s.ChineseName || '', s.Icon || ''];
+  const k = new Set(); (s.Effects || []).forEach(e => { const t = CCT[String(e.Type || '').toLowerCase()]; if (t !== undefined) k.add(t); }); if (k.size) CC[s.SkillId] = [...k]; }); } catch {}
 const P = {}; const G = id => P[id] ||= {};
 const rows = f => { if (!fs.existsSync(f)) return []; return fs.readFileSync(f, 'utf8').replace(/^\uFEFF/, '').split(/\r?\n/).slice(1).filter(Boolean).map(l => l.split(',')); };
 const used = new Set();
 // 施法 0x0021 / 中断 0x002A
 for (const q of rows(base + 'x-casts-0021.csv')) { const id = byName[q[2]]; if (id === undefined) continue; const o = G(id); o.c ||= [0, 0, {}]; const intr = q[11] === '是'; o.c[0]++; if (intr) o.c[1]++; const s = (o.c[2][q[4]] ||= [0, 0]); s[0]++; if (intr) s[1]++; }
 // 受到的增益/减益 0x0012
-for (const q of rows(base + 'x-buffs-0012.csv')) { const id = byName[q[1]]; if (id === undefined) continue; const o = G(id); o.bf ||= {}; const k = q[3] + '|' + q[8]; const kind = q[6] && q[2] ? (q[6] === q[2] ? 1 : 2) : 0; const b = (o.bf[k] ||= [+q[3], +q[8], kind, 0, {}]); b[3] += +q[11] || 1; if (q[5]) b[4][q[5]] = (b[4][q[5]] || 0) + (+q[11] || 1); }
+for (const q of rows(base + 'x-buffs-0012.csv')) { const id = byName[q[1]]; if (id === undefined) continue; const o = G(id); o.bf ||= {}; const k = q[3] + '|' + q[8]; const kind = q[6] && q[2] ? (q[6] === q[2] ? 1 : 2) : 0; const cc = CC[+q[3]]; if (cc) { o.cc ||= [0, 0, 0, 0]; cc.forEach(i => o.cc[i] += +q[11] || 1); }
+  const b = (o.bf[k] ||= [+q[3], +q[8], kind, 0, {}]); b[3] += +q[11] || 1; if (q[5]) b[4][q[5]] = (b[4][q[5]] || 0) + (+q[11] || 1); }
 // 外观装备 0x0024（取最后一次）
 for (const q of rows(base + 'x-equip-0024.csv')) { const id = byName[q[1]]; if (id === undefined) continue; G(id).e = q[4].trim().split(/\s+/).map(Number).filter(Boolean); }
 // 阵亡 0x0025：击杀者
@@ -33,7 +38,7 @@ const RK = { 0x0A: [0], 0xCA: [1], 0x02: [2], 0xC2: [2, 1], 0x04: [3], 0xC4: [3,
   const out = {}; const top = (o, n) => Object.entries(o).sort((x, y) => y[1] - x[1]).slice(0, n);
   for (const [id, o] of Object.entries(P)) { const x = {};
     if (o.c) { x.c = [o.c[0], o.c[1], Object.entries(o.c[2]).sort((a, b) => b[1][0] - a[1][0]).slice(0, 12).map(([s, v]) => (used.add(+s), [+s, v[0], v[1]]))]; }
-    if (o.ra) x.ra = o.ra; if (o.rr) x.rr = o.rr; if (o.e) x.e = o.e;
+    if (o.ra) x.ra = o.ra; if (o.cc) x.cc = o.cc; if (o.rr) x.rr = o.rr; if (o.e) x.e = o.e;
     if (o.bf) x.bf = Object.values(o.bf).sort((a, b) => b[3] - a[3]).slice(0, 20).map(b => (used.add(b[0]), [b[0], b[1], b[2], b[3], top(b[4], 1).map(z => z[0])[0] || '']));
     if (o.d) x.d = top(o.d, 15); if (o.n) x.n = top(o.n, 10);
     (out[id % 16] ||= {})[id] = x; }

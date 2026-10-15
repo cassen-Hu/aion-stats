@@ -63,3 +63,10 @@ Evidence 目录换了位置时，用 `-EvidenceDir "新路径"` 指定。
 ## 职业对照（ClassId）
 
 1 剑星、2 守护星、4 杀星、5 弓星、7 魔道星、8 精灵星、10 治愈星、11 护法星（来自 CaoBattle 的 AionPlayerInfoParser）。阵营 Race：0 天族、1 魔族。
+
+## 资料卡：被控制次数（0x0012）
+
+按客户端技能表 aion_skills_cn.json 每个技能的 Effects[].Type 归类（大小写不敏感，Buff* 开头的自身防护效果不算）：击倒 = Stumble；麻痹 = Paralyze、Stun；沉默 = Silence；失明 = Blind。次数 = 0x0012 中该效果施加到玩家身上的次数（x-buffs-0012.csv 施加次数）。
+
+攻击结果（0x002B marker 高字节，PvP，按 PayloadSHA256+RecordIndex 去重）：0A 普通、CA 暴击、04/C4 格挡（C4 同时算暴击）、00 闪避、06 抵抗；招架不显示。
+
