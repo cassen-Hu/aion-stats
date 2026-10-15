@@ -25,6 +25,7 @@
     <button data-tab="players" class="on">玩家排行</button>
     <button data-tab="legions">军团排行</button>
     <button data-tab="classes">职业统计</button>
+    <button data-tab="transform">变身</button>
     <button data-tab="battles">战斗场次</button>
     <button data-tab="sandbox">沙盘回放</button>
     <button data-tab="skills" hidden>技能结构</button>
@@ -35,6 +36,7 @@
   <section id="players" class="tab on"><div class="tw"><table id="tp"></table></div><div class="more" id="pm"></div></section>
   <section id="legions" class="tab"><div class="tw"><table id="tl"></table></div></section>
   <section id="classes" class="tab"><div class="tw"><table id="tc"></table></div></section>
+  <section id="transform" class="tab"><div id="tf" class="tf-grid"></div></section>
   <section id="battles" class="tab">
     <div id="blist" class="blist"></div>
     <div id="bdetail"></div>
@@ -58,10 +60,8 @@
       <label><input type="checkbox" id="sbDeath" checked> <span class="dead">✕ 阵亡</span></label>
       <span id="sbInfo" class="note"></span>
     </div>
-    <p class="note">滚轮/双指缩放，拖动平移，点人物看名字。坐标来自抓包位置帧，地图对齐沿用水表沙盘的默认方式（玩家坐标绕地图中心旋转 -90°）。</p>
   </section>
-  <section id="skills" class="tab"><p class="note">协议层面的伤害记录结构统计。</p><div class="tw"><table id="ts"></table></div></section>
-  <p class="note">数据来自水表解析的“候选值”，PvP/PvE 合计 = 技能 + 普攻；为解析统计，非游戏官方数值。时间为北京时间。</p>
+  <section id="skills" class="tab"><div class="tw"><table id="ts"></table></div></section>
 </main>
 <footer><picture><source srcset="img/logo-64.webp" type="image/webp"><img class="flogo" src="img/logo-64.png" width="32" height="32" alt="草"></picture><div id="foot"></div></footer>
 <div id="about" class="pmask about"><div class="pbox"><button class="px" type="button">✕</button>

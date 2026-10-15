@@ -58,12 +58,13 @@
 
   function render() {
     if (!data) return;
+    raceByName = {}; data.players.forEach(p => { if (p.race === 0 || p.race === 1) raceByName[p.name] = p.race; });
     const P = filt(data.players, ['name', 'legion']);
-    const n = table('tp', [{ k: 'name', n: '角色', t: 1, f: r => `<b class="pn" data-id="${r.id}">${esc(r.name)}</b>` }, { k: 'legion', n: '军团', t: 1 },
+    const n = table('tp', [{ k: 'name', n: '角色', t: 1, f: r => `<b class="pn" data-id="${r.id}">${esc(r.name)}</b>` }, { k: 'legion', n: '军团', t: 1, f: r => r.legion ? `<span class="ln" data-lg="${esc(r.legion)}" data-r="${r.race}">${esc(r.legion)}</span>` : '' },
       { k: 'race', n: '阵营', f: r => race(r.race) }, { k: 'classId', n: '职业', f: r => cls(r.classId) }, ...dmgCols()], P, limit);
     $('#pm').innerHTML = n > limit ? `<button id="mb">显示更多（共 ${n} 人，当前 ${limit}）</button>` : `共 ${n} 人`;
     if (n > limit) $('#mb').onclick = () => { limit += 200; render(); };
-    table('tl', [{ k: 'legion', n: '军团', t: 1, f: r => `<b>${esc(r.legion)}</b>` }, { k: 'race', n: '阵营', f: r => race(r.race) },
+    table('tl', [{ k: 'legion', n: '军团', t: 1, f: r => `<b class="ln" data-lg="${esc(r.legion)}" data-r="${r.race}">${esc(r.legion)}</b>` }, { k: 'race', n: '阵营', f: r => race(r.race) },
       num('members', '人数'), ...dmgCols()], filt(data.legions, ['legion']));
     const by = {};
     P.forEach(p => { const g = by[p.race + '-' + p.classId] ||= { race: p.race, classId: p.classId, name: cls(p.classId), count: 0, pvp: 0, pve: 0 };
@@ -73,14 +74,19 @@
       Object.values(by).map(g => ({ ...g, avgPvp: Math.round(g.pvp / g.count), avgPve: Math.round(g.pve / g.count) })));
     table('ts', [{ k: 'factClass', n: '记录类型', t: 1 }, { k: 'marker', n: '标记', t: 1 }, num('records', '记录数'), num('positiveSum', '正值合计')], data.skillPatterns);
     renderBattleList();
+    if ($('#transform') && $('#transform').classList.contains('on')) renderTransform();
     if (curBattle >= 0) renderBattleDetail(curBattle);
     const sum = (a, k) => a.reduce((s, r) => s + r[k], 0), all = data.players;
     const ep = sum(all.filter(p => p.race === 0), 'pvp'), ap = sum(all.filter(p => p.race === 1), 'pvp'), tp = sum(all, 'pvp'), sh = ep + ap ? Math.round(100 * ep / (ep + ap)) : 50;
-    $('#summary').innerHTML = [['PvP 总伤害（技能+普攻）', fmt(tp)], ['玩家', fmt(all.length)], ['军团', fmt(data.legions.length)], ['战斗场次（>50人）', battles.length]]
+    $('#summary').innerHTML = [['PvP 总伤害（技能+普攻）', fmt(tp)], ['玩家', fmt(all.length)], ['军团', fmt(data.legions.length)], ['战斗场次（>50人）', battles.length], ['阵亡（各场合计）', dhtml(dsplit(battles.flatMap(b => b.kills)), '<br>')]]
       .map(([a, b]) => `<div class="card"><span>${a}</span><b>${b}</b></div>`).join('') +
       `<div class="card wide"><span>阵营 PvP 伤害（技能+普攻）· ${data.date}</span><div class="rbar"><i class="e" style="width:${sh}%">天族 ${fmt(ep)}</i><i class="a">魔族 ${fmt(ap)}</i></div></div>`;
   }
 
+  // 阵亡按阵营拆分（按阵亡者名字查当天名单；阵营未知只计入总数）
+  let raceByName = {};
+  function dsplit(kills) { let e = 0, m = 0; kills.forEach(k => { const r = raceByName[k.victim]; if (r === 0) e++; else if (r === 1) m++; }); return { t: kills.length, e, m }; }
+  const dhtml = (d, sep) => `${fmt(d.t)}${sep || ' '}<span class="ds"><span class="r0">天 ${fmt(d.e)}</span> <span class="r1">魔 ${fmt(d.m)}</span></span>`;
   // —— 战斗场次 ——
   const mapName = m => m ? ((MAPS[m] && MAPS[m].name) || m) : '未识别地图';
   function battleRows(b) {
@@ -91,10 +97,10 @@
       const rows = battleRows(b), pvp = rows.reduce((s, r) => s + r.pvp, 0);
       return `<div class="bcard ${i === curBattle ? 'on' : ''}" data-i="${i}"><h3>第 ${b.no} 场 · ${esc(mapName(b.map))}</h3>
         <div class="m">${hm(b.start)} – ${hm(b.end)}（${b.minutes} 分钟）${b.rule === 'activity' ? ' · 按交战活动分段' : ''}</div>
-        <div class="s"><span>⚔ ${rows.filter(r => r.pvp > 0).length} 人</span><span class="dead">✕ ${b.kills.length}</span><span>PvP ${fmt(pvp)}</span></div></div>`;
+        <div class="s"><span>⚔ ${rows.filter(r => r.pvp > 0).length} 人</span><span class="dead">✕ ${dhtml(dsplit(b.kills))}</span><span>PvP ${fmt(pvp)}</span></div></div>`;
     }).join('') : '<p class="note">这一天没有切分出战斗。</p>';
     $('#blist').querySelectorAll('.bcard').forEach(c => c.onclick = () => { curBattle = +c.dataset.i; renderBattleList(); renderBattleDetail(curBattle); });
-    if (curBattle < 0) $('#bdetail').innerHTML = battles.length ? '<p class="note">点上面任意一场查看详情。</p>' : '';
+    if (curBattle < 0) $('#bdetail').innerHTML = '';
   }
   function renderBattleDetail(i) {
     const b = battles[i]; if (!b) return;
@@ -104,14 +110,14 @@
     const kc = {}, dc = {}; b.kills.forEach(k => { kc[k.killer] = (kc[k.killer] || 0) + 1; dc[k.victim] = (dc[k.victim] || 0) + 1; });
     rows.forEach(r => { r.kills = kc[r.name] || 0; r.deaths = dc[r.name] || 0; });
     $('#bdetail').innerHTML = `<div class="bd"><h2>第 ${b.no} 场 · ${esc(mapName(b.map))} · ${hm(b.start)}–${hm(b.end)}</h2>
-      <button class="btn" id="toSb">▶ 沙盘回放这一场</button> <span class="note">轨迹人数 ${b.tracked}</span>
+      <button class="btn" id="toSb">▶ 沙盘回放这一场</button>
       <h4>参战玩家</h4><div class="tw"><table id="tb"></table></div>
       <div class="grid2"><div><h4>军团</h4><div class="tw"><table id="tbl"></table></div></div>
-      <div><h4>击杀记录（${b.kills.length}）</h4><div class="kills">${b.kills.map(k => `<div><span class="tm">${mmss(k.t)}</span>${esc(k.killer)} <span class="dead">✕</span> ${esc(k.victim)}</div>`).join('') || '无'}</div></div></div></div>`;
-    table('tb', [{ k: 'name', n: '角色', t: 1, f: r => `<b class="pn" data-id="${r.id}">${esc(r.name)}</b>` }, { k: 'legion', n: '军团', t: 1 }, { k: 'race', n: '阵营', f: r => race(r.race) },
+      <div><h4>击杀记录（阵亡 ${dhtml(dsplit(b.kills))}）</h4><div class="kills">${b.kills.map(k => `<div><span class="tm">${mmss(k.t)}</span>${esc(k.killer)} <span class="dead">✕</span> ${esc(k.victim)}</div>`).join('') || '无'}</div></div></div></div>`;
+    table('tb', [{ k: 'name', n: '角色', t: 1, f: r => `<b class="pn" data-id="${r.id}">${esc(r.name)}</b>` }, { k: 'legion', n: '军团', t: 1, f: r => r.legion ? `<span class="ln" data-lg="${esc(r.legion)}" data-r="${r.race}">${esc(r.legion)}</span>` : '' }, { k: 'race', n: '阵营', f: r => race(r.race) },
       { k: 'classId', n: '职业', f: r => cls(r.classId) }, num('kills', '击杀'), num('deaths', '阵亡'), ...dmgCols()], rows);
     sortState.tbl ||= ['pvp', -1];
-    table('tbl', [{ k: 'legion', n: '军团', t: 1 }, { k: 'race', n: '阵营', f: r => race(r.race) }, num('members', '人数'), num('pvp', 'PvP'), num('pve', 'PvE')], Object.values(lg));
+    table('tbl', [{ k: 'legion', n: '军团', t: 1, f: r => r.legion ? `<span class="ln" data-lg="${esc(r.legion)}" data-r="${r.race}">${esc(r.legion)}</span>` : '' }, { k: 'race', n: '阵营', f: r => race(r.race) }, num('members', '人数'), num('pvp', 'PvP'), num('pve', 'PvE')], Object.values(lg));
     $('#toSb').onclick = () => { showTab('sandbox'); $('#sbBattle').value = i; openSandbox(i); };
   }
 
@@ -234,6 +240,43 @@
   cv.addEventListener('touchend', () => { pinch = null; });
   window.addEventListener('resize', draw);
 
+  // —— 军阶 / 军团详情 / 变身（参照 Batch25 LegionDetailWindow 与变身板块）——
+  const RANKS = ['无军阶', '九等兵', '八等兵', '七等兵', '六等兵', '五等兵', '四等兵', '三等兵', '二等兵', '一等兵', '1星将校', '2星将校', '3星将校', '4星将校', '5星将校', '将军', '大将军', '司令官', '总司令官'];
+  const rankName = (r, race) => r == null || r < 0 || r > 18 ? '' : r === 0 ? RANKS[0] : (race === 0 ? '天军' : race === 1 ? '魔军' : '') + RANKS[r];
+  function modal(id) {
+    let box = $('#' + id); if (!box) { document.body.insertAdjacentHTML('beforeend', `<div id="${id}" class="pmask"><div class="pbox"></div></div>`); box = $('#' + id); box.onclick = e => { if (e.target === box || e.target.classList.contains('px')) box.style.display = 'none'; }; }
+    box.style.display = 'flex'; return box.querySelector('.pbox');
+  }
+  const stat = (l, v, c) => `<div class="pf-stat"><span>${l}</span><b class="${c || ''}">${v}</b></div>`;
+  async function openLegion(name, race) {
+    const inner = modal('legion'); inner.innerHTML = '<p class="note">加载中…</p>';
+    let pr = {}; try { pr = await getProf(data.date) || {}; } catch {}
+    const kd = pr.kd || {}, st = pr.st || {}, rk = pr.rk || {};
+    const mem = data.players.filter(p => p.legion === name && p.race === race).map(p => {
+      const k = kd[p.name] || [0, 0], s = st[p.id] || [0, 0, 0], r = rk[p.id];
+      return { p, kills: k[0], deaths: k[1], pvp: p.pvpSkill + p.pvpAuto, heal: s[1], aoe: s[2], lv: r ? r[1] : 0 };
+    }).filter(m => m.pvp + m.p.pveSkill + m.p.pveAuto + m.kills + m.deaths + m.heal > 0).sort((a, b) => b.pvp - a.pvp);
+    const sum = k => mem.reduce((s, m) => s + m[k], 0);
+    const cc = {}; mem.forEach(m => { if (m.p.classId) cc[m.p.classId] = (cc[m.p.classId] || 0) + 1; });
+    const bt = battles.map((b, i) => { const ids = new Set(mem.map(m => m.p.id)); const d = b.damage.filter(x => ids.has(x.id)); const names = new Set(mem.map(m => m.p.name));
+      return { i, b, n: d.filter(x => x.pvpSkill + x.pvpAuto > 0).length, pvp: d.reduce((s, x) => s + x.pvpSkill + x.pvpAuto, 0), k: b.kills.filter(x => names.has(x.killer)).length, v: b.kills.filter(x => names.has(x.victim)).length }; }).filter(x => x.n + x.k + x.v > 0);
+    const rc = race === 0 ? 'r0' : 'r1';
+    inner.innerHTML = `<button class="px">✕</button><h2 class="${rc}">${esc(name)}</h2><div class="pf-sub">${race === 0 ? '天族' : '魔族'} · 参战 ${fmt(mem.length)} 人 · ${data.date}</div>
+      <div class="pf-stats">${stat('参战人数', fmt(mem.length), rc)}${stat('击杀总数', fmt(sum('kills')), 'gold')}${stat('阵亡次数', fmt(sum('deaths')), rc)}${stat('PvP伤害总数', fmt(sum('pvp')))}${stat('治疗总数', fmt(sum('heal')))}${stat('AOE技能伤害总和', fmt(sum('aoe')))}</div>
+      <h4>参战人数 · 各职业</h4><div class="pf-chips">${Object.keys(cc).sort((a, b) => cc[b] - cc[a]).map(c => `<span>${cls(+c)} <b>${cc[c]}</b></span>`).join('') || '-'}</div>
+      <h4>各场战斗（${bt.length}）</h4>${bt.length ? `<div class="pf-scroll"><table class="kv"><tr><th class="t">场次</th><th>参战</th><th>PvP</th><th>击杀</th><th>阵亡</th></tr>${bt.map(x => `<tr><td class="t">第 ${x.b.no} 场 ${hm(x.b.start)} ${esc(mapName(x.b.map))}</td><td>${x.n}</td><td>${fmt(x.pvp)}</td><td>${x.k}</td><td class="${rc}">${x.v}</td></tr>`).join('')}</table></div>` : '<p class="note">无</p>'}
+      <h4>成员明细（${mem.length}）</h4><div class="pf-scroll pf-rel" style="max-height:420px"><table class="kv"><tr><th class="t">玩家 ／ 等级 · 职业</th><th>击杀</th><th>阵亡</th><th>PvP伤害</th><th>治疗</th></tr>${mem.map(m => `<tr><td class="t"><b class="pn r${m.p.race}" data-id="${m.p.id}">${esc(m.p.name)}</b><div class="pf-sl">${m.lv ? 'Lv' + m.lv + ' · ' : ''}${cls(m.p.classId)}</div></td><td>${m.kills}</td><td>${m.deaths}</td><td>${fmt(m.pvp)}</td><td>${fmt(m.heal)}</td></tr>`).join('')}</table></div>`;
+  }
+  document.addEventListener('click', e => { const t = e.target.closest('.ln'); if (t) openLegion(t.dataset.lg, +t.dataset.r); });
+  async function renderTransform() {
+    const el = $('#tf'); if (!el || !data) return; el.innerHTML = '<p class="note">加载中…</p>';
+    let pr = {}; try { pr = await getProf(data.date) || {}; } catch {}
+    const kd = pr.kd || {}, st = pr.st || {}, rk = pr.rk || {};
+    const P = filt(data.players, ['name', 'legion']).filter(p => rk[p.id] && rk[p.id][0] >= 14).map(p => { const k = kd[p.name] || [0, 0], s = st[p.id] || [0, 0, 0];
+      return { ...p, rank: rk[p.id][0], lv: rk[p.id][1], kills: k[0], deaths: k[1], pvp: p.pvpSkill + p.pvpAuto, taken: s[0], heal: s[1] }; });
+    el.innerHTML = [0, 1].map(r => { const L = P.filter(p => p.race === r).sort((a, b) => b.pvp - a.pvp);
+      return `<div class="tf-col"><h2 class="sec r${r}">${r === 0 ? '天族' : '魔族'}变身玩家（${L.length}）</h2><div class="tw"><table><thead><tr><th class="t">#</th><th class="t">玩家 ／ 等级 · 职业 · 军团</th><th class="t">军阶称谓</th><th>击杀</th><th>阵亡</th><th>PvP伤害</th><th>PvP受到</th><th>治疗</th></tr></thead><tbody>${L.map((p, i) => `<tr><td class="t rk">${i + 1}</td><td class="t"><b class="pn r${r}" data-id="${p.id}">${esc(p.name)}</b><div class="pf-sl">${p.lv ? 'Lv' + p.lv + ' · ' : ''}${cls(p.classId)}${p.legion ? ' · <span class="ln" data-lg="' + esc(p.legion) + '" data-r="' + r + '">' + esc(p.legion) + '</span>' : ''}</div></td><td class="t">${RANKS[p.rank]}</td><td>${p.kills}</td><td>${p.deaths}</td><td>${fmt(p.pvp)}</td><td>${fmt(p.taken)}</td><td>${fmt(p.heal)}</td></tr>`).join('') || '<tr><td colspan="8" class="t note">无</td></tr>'}</tbody></table></div></div>`; }).join('');
+  }
   // —— 玩家资料卡（点名字打开；技能/击杀和跨日索引按需加载）——
   async function getProf(d) { if (!(window.AION_PROF && window.AION_PROF[d])) await loadScript(`data/prof/${d}.js`); return window.AION_PROF[d]; }
   async function getSk(d, id) { if (!window.AION_SKILLNAMES) { try { await loadScript('data/skillnames.js'); } catch {} } const n = id % 16; if (!(window.AION_SK && window.AION_SK[d] && window.AION_SK[d][n])) await loadScript(`data/sk/${d}/${n}.js`); return window.AION_SK[d][n][id] || []; }
@@ -242,9 +285,20 @@
     if (!sk.length) return '<p class="note">无</p>';
     const pct = (a, b) => b ? (100 * a / b).toFixed(1) + '%' : '-';
     return `<div class="pf-scroll"><table class="kv pf-skills"><tr><th class="t">技能</th><th>总伤害</th><th>PvP</th><th>PvE</th><th>命中</th><th>暴击率</th><th>平均</th><th>最大</th></tr>${sk.map(s => { const tot = s[1] + s[2], n = s[3] + s[4];
-      return `<tr><td class="t" title="技能ID ${s[0]}">${s[0] === 0 ? '普攻' : esc((window.AION_SKILLNAMES || {})[s[0]] || '#' + s[0])}</td><td>${fmt(tot)}</td><td>${fmt(s[1])}</td><td>${fmt(s[2])}</td><td>${fmt(n)}</td><td>${s[0] === 0 ? '-' : pct(s[6], s[5])}</td><td>${fmt(n ? Math.round(tot / n) : 0)}</td><td>${fmt(s[7])}</td></tr>`; }).join('')}</table></div>
-      <p class="note">共 ${sk.length} 个技能，来自统一账本去重后的命中。技能名来自客户端技能表 aion_skills_cn.json（鼠标悬停看技能ID）。暴击率 = marker 0xCA00/0xC200 占比；普攻不判暴击。</p>`;
+      return `<tr><td class="t" title="技能ID ${s[0]}">${s[0] === 0 ? '普攻' : esc((window.AION_SKILLNAMES || {})[s[0]] || '#' + s[0])}</td><td>${fmt(tot)}</td><td>${fmt(s[1])}</td><td>${fmt(s[2])}</td><td>${fmt(n)}</td><td>${s[0] === 0 ? '-' : pct(s[6], s[5])}</td><td>${fmt(n ? Math.round(tot / n) : 0)}</td><td>${fmt(s[7])}</td></tr>`; }).join('')}</table></div>`;
   }
+  async function getRel(d, id) { const n = id % 16; if (!(window.AION_REL && window.AION_REL[d] && window.AION_REL[d][n])) await loadScript(`data/rel/${d}/${n}.js`); return window.AION_REL[d][n][id] || {}; }
+  // 关系列表（组件）：rows=[[id,值,次数]] 或击杀 [[名字,id,[时间...]]]
+  const pnm = (id, nm) => { const q = byId[id]; return q ? `<b class="pn r${q.race}" data-id="${id}">${esc(q.name)}</b>` : esc(nm || ('#' + id)); };
+  function relTable(title, rows, cols) {
+    if (!rows || !rows.length) return `<h4>${title}</h4><p class="note">无</p>`;
+    return `<h4>${title}（${rows.length}）</h4><div class="pf-scroll pf-rel"><table class="kv"><tr><th class="t">玩家</th>${cols.map(c => `<th>${c}</th>`).join('')}</tr>${rows.map(r => `<tr><td class="t">${pnm(r[0], r[3])}</td><td>${fmt(r[1])}</td><td>${fmt(r[2])}</td></tr>`).join('')}</table></div>`;
+  }
+  function killTable(title, rows) {
+    if (!rows || !rows.length) return `<h4>${title}</h4><p class="note">无</p>`;
+    return `<h4>${title}（${rows.reduce((s, r) => s + r[2].length, 0)}）</h4><div class="pf-scroll pf-rel"><table class="kv"><tr><th class="t">玩家</th><th>次数</th><th class="t">时间</th></tr>${rows.map(r => `<tr><td class="t">${r[1] ? pnm(r[1], r[0]) : esc(r[0])}</td><td>${r[2].length}</td><td class="t tm">${r[2].map(s => hms(s)).join(' ')}</td></tr>`).join('')}</table></div>`;
+  }
+  const hms = s => new Date(s * 1000).toLocaleTimeString('zh-CN', { ...tz, hour: '2-digit', minute: '2-digit', second: '2-digit' });
   async function getPlayers() { if (!window.AION_PLAYERS) await loadScript('data/players.js'); return window.AION_PLAYERS; }
   async function openProfile(id) {
     const p = byId[id]; if (!p) return;
@@ -255,14 +309,17 @@
     const bt = battles.map((b, i) => { const d = b.damage.find(x => x.id === id); const k = b.kills.filter(x => x.killer === p.name).length, v = b.kills.filter(x => x.victim === p.name).length;
       return (d || k || v) ? { i, b, pvp: d ? d.pvpSkill + d.pvpAuto : 0, pve: d ? d.pveSkill + d.pveAuto : 0, k, v } : null; }).filter(Boolean);
     let sk = []; try { sk = await getSk(data.date, id); } catch {}
+    let rl = {}; try { rl = await getRel(data.date, id); } catch {}
     const days = (pl && pl[p.name + '|' + p.race]) || [];
     const row = (a, b) => `<tr><td class="t">${a}</td><td>${b}</td></tr>`;
     inner.innerHTML = `<button class="px">✕</button><h2>${esc(p.name)} ${race(p.race)}</h2>
-      <table class="kv">${row('军团', esc(p.legion) || '（无）')}${p.classId ? row('职业', cls(p.classId)) : ''}${row('日期', data.date)}</table>
+      <table class="kv">${row('军团', p.legion ? `<span class="ln" data-lg="${esc(p.legion)}" data-r="${p.race}">${esc(p.legion)}</span>` : '（无）')}${(pr && pr.rk && pr.rk[id]) ? row('等级', pr.rk[id][1] || '-') + row('深渊军阶', rankName(pr.rk[id][0], p.race)) : ''}${p.classId ? row('职业', cls(p.classId)) : ''}${row('日期', data.date)}</table>
       <h4>当天伤害</h4><table class="kv">${row('PvP 技能', fmt(p.pvpSkill))}${row('PvP 普攻', fmt(p.pvpAuto))}${row('PvE 技能', fmt(p.pveSkill))}${row('PvE 普攻', fmt(p.pveAuto))}${row('击杀 / 阵亡', `${kd[0]} / <span class="dead">${kd[1]}</span>`)}</table>
       <h4>参与的战斗（${bt.length}）</h4>${bt.length ? `<div class="pf-scroll"><table class="kv"><tr><th class="t">场次</th><th>PvP</th><th>PvE</th><th>击杀</th><th>阵亡</th></tr>${bt.map(x => `<tr><td class="t"><a href="#" data-b="${x.i}">第 ${x.b.no} 场 ${hm(x.b.start)} ${esc(mapName(x.b.map))}</a></td><td>${fmt(x.pvp)}</td><td>${fmt(x.pve)}</td><td>${x.k}</td><td>${x.v}</td></tr>`).join('')}</table></div>` : '<p class="note">无</p>'}
       <h4>使用的技能</h4>${skillTable(sk)}
-      <h4>出现过的日期（${days.length}）</h4>${days.length ? `<table class="kv"><tr><th class="t">日期</th><th>PvP</th><th>PvE</th></tr>${days.map(x => `<tr><td class="t"><a href="#" data-d="${x[0]}" data-id="${x[1]}">${x[0]}</a></td><td>${fmt(x[2])}</td><td>${fmt(x[3])}</td></tr>`).join('')}</table><p class="note">按“名字+阵营”跨日匹配。</p>` : '<p class="note">-</p>'}`;
+      ${relTable('攻击了谁（PvP）', rl.a, ['伤害', '命中'])}${relTable('被谁攻击（PvP）', rl.b, ['伤害', '命中'])}
+      ${killTable('击杀了谁', rl.k)}${killTable('被谁击杀', rl.kb)}${relTable('被谁治疗', rl.h, ['治疗量', '次数'])}
+      <h4>出现过的日期（${days.length}）</h4>${days.length ? `<table class="kv"><tr><th class="t">日期</th><th>PvP</th><th>PvE</th></tr>${days.map(x => `<tr><td class="t"><a href="#" data-d="${x[0]}" data-id="${x[1]}">${x[0]}</a></td><td>${fmt(x[2])}</td><td>${fmt(x[3])}</td></tr>`).join('')}</table>` : '<p class="note">-</p>'}`;
     inner.querySelectorAll('a[data-b]').forEach(a => a.onclick = e => { e.preventDefault(); box.style.display = 'none'; showTab('battles'); curBattle = +a.dataset.b; renderBattleList(); renderBattleDetail(curBattle); });
     inner.querySelectorAll('a[data-d]').forEach(a => a.onclick = async e => { e.preventDefault(); const d = a.dataset.d, pid = +a.dataset.id;
       if (d !== data.date) { $('#date').value = d; await load(d); } openProfile(pid); });
@@ -273,6 +330,7 @@
   function showTab(name) {
     document.querySelectorAll('#tabs button, .tab').forEach(x => x.classList.remove('on'));
     document.querySelector(`#tabs button[data-tab="${name}"]`).classList.add('on'); $('#' + name).classList.add('on');
+    if (name === 'transform') renderTransform();
     if (name === 'sandbox') { if (!SB.tr && battles.length) openSandbox(+$('#sbBattle').value || 0); else draw(); }
   }
   document.querySelectorAll('#tabs button').forEach(b => b.onclick = () => showTab(b.dataset.tab));
@@ -284,7 +342,7 @@
     byId = {}; data.players.forEach(p => byId[p.id] = p);
     limit = 100; curBattle = -1; SB.tr = null; fillSandboxSelect(); render();
     if ($('#sandbox').classList.contains('on') && battles.length) openSandbox(0); else draw();
-    $('#foot').textContent = '数据生成时间：' + (data.generatedAt || '-');
+    
     history.replaceState(null, '', '#' + d);
   }
   ['#q', '#race', '#cls'].forEach(s => $(s).addEventListener('input', () => { limit = 100; render(); }));

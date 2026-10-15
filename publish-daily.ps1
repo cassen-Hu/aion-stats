@@ -17,6 +17,7 @@ param(
   [string]$FramesFile,          # 不填则从当天 .txt 报告的“文件:”行读取
   [switch]$NoBattles,           # 跳过分场/沙盘（只发布日汇总）
   [double]$TrackSampleSec = 3,  # 沙盘轨迹采样间隔（秒）
+  [string]$SkillTable = 'F:\Aion-Project\CB-CaoBattle\Program\Data\aion_skills_cn.json',   # 客户端技能表（中文名）；不用 MyAion 协议映射表
   [string]$LedgerDir = 'F:\GB-AionLive\AionCaptureReview\Out\ledger'   # AionCaptureReview 统一账本输出（x-ledger-*.csv）
 )
 #Requires -Version 7
@@ -103,6 +104,19 @@ function Publish-Battles([string]$d, [string]$iso, [string]$base, [string]$hitsP
 }
 $script:SkippedDays = @()
 $script:MapsUsed = @()
+# 技能表：中文名 + 回蓝类技能（精神力/魔力/精气，治疗统计里排除）
+$script:SkillNames = @{}
+if (Test-Path $SkillTable) {
+  foreach ($e in ([IO.File]::ReadAllText($SkillTable) | ConvertFrom-Json)) { if ($e.ChineseName) { $script:SkillNames[[int]$e.SkillId] = $e.ChineseName } }
+  $mp = @($script:SkillNames.GetEnumerator() | Where-Object { $_.Value -match '精神力|魔力|精气' } | ForEach-Object { $_.Key })
+  [IO.File]::WriteAllLines((Join-Path $Site 'tools\mp-skills.txt'), [string[]]$mp)
+} else { Write-Warning "找不到技能表 $SkillTable，技能名与回蓝过滤不可用" }
+# AOE 技能：skill_templates.xml 里 target_type="AREA"（与 Batch25 SkillData 的 AOE 判定相同，不用 MyAion 协议映射兜底）
+$SkillXml = 'F:\Aion-Project\CB-CaoBattle\Program\StaticData\Data\skill_templates.xml'
+if (Test-Path $SkillXml) {
+  $aoeIds = [regex]::Matches([IO.File]::ReadAllText($SkillXml), '<skill_template[^>]*?skill_id="(\d+)"[^>]*>\s*<properties[^>]*target_type="AREA"') | ForEach-Object { $_.Groups[1].Value }
+  [IO.File]::WriteAllLines((Join-Path $Site 'tools\aoe-skills.txt'), [string[]]$aoeIds)
+}
 
 $targets = if ($All) { Get-AvailableDates } elseif ($Date) { ,($Date -replace '-', '') } else { ,(Get-AvailableDates | Select-Object -Last 1) }
 if (-not $targets) { throw "Evidence 目录里没有可用数据：$EvidenceDir" }
@@ -162,6 +176,16 @@ foreach ($dd in $dates) {
 }
 [IO.File]::WriteAllText((Join-Path $DataDir 'players.js'), 'window.AION_PLAYERS=' + (ConvertTo-Json $pidx -Depth 4 -Compress) + ';', $Utf8)
 Write-Host "data/players.js 已更新：$($pidx.Count) 个角色"
+
+# data/skillnames.js：只收录已发布数据里出现过的技能 ID（资料卡按需加载）
+if ($script:SkillNames.Count) {
+  $seen = @{}; Get-ChildItem (Join-Path $DataDir 'sk') -Recurse -Filter *.js -ErrorAction SilentlyContinue | ForEach-Object {
+    foreach ($m in [regex]::Matches([IO.File]::ReadAllText($_.FullName), '(?<=[\[,])\[(\d+),')) { $seen[[int]$m.Groups[1].Value] = 1 } }
+  $sn = [ordered]@{}; $miss = @()
+  foreach ($k in ($seen.Keys | Where-Object { $_ -ne 0 } | Sort-Object)) { if ($script:SkillNames.ContainsKey($k)) { $sn["$k"] = $script:SkillNames[$k] } else { $miss += $k } }
+  [IO.File]::WriteAllText((Join-Path $DataDir 'skillnames.js'), 'window.AION_SKILLNAMES=' + (ConvertTo-Json $sn -Compress) + ';', $Utf8)
+  Write-Host ("data/skillnames.js 已更新：$($sn.Count) 个技能有中文名" + $(if ($miss) { "，缺名：$($miss -join ',')" } else { '' }))
+}
 
 # 生成 data/bundle.js（双击 index.html 用 file:// 打开时浏览器禁止 fetch，所以把数据打包成脚本）
 $bundle = 'window.AION_DATA={"index":' + (ConvertTo-Json @($dates) -Compress) + ',"maps":' + (ConvertTo-Json $mapInfo -Depth 5 -Compress) + '};'
