@@ -6,8 +6,8 @@ const [dataDir, date, base, factsPath, skillsJson] = process.argv.slice(2);
 const w = {}; vm.runInNewContext(fs.readFileSync(path.join(dataDir, 'day', date + '.js'), 'utf8'), { window: w });
 const day = Object.values(w.AION_DAYS)[0].daily, byName = {}; day.players.forEach(p => { if (!(p.name in byName)) byName[p.name] = p.id; });
 // 控制类状态：按 aion_skills_cn.json 每个技能 Effects[].Type 归类（大小写不敏感；Buff* 是自身防护效果，不算）
-// 0=击倒 Stumble　1=麻痹 Paralyze/Stun　2=沉默 Silence　3=失明 Blind
-const CCT = { stumble: 0, paralyze: 1, stun: 1, silence: 2, blind: 3 };
+// 0=击倒 Stumble　1=麻痹 Paralyze/Stun　2=沉默 Silence　3=失明 Blind　4=晕厥 Stagger/Spin/OpenAerial
+const CCT = { stumble: 0, paralyze: 1, stun: 1, silence: 2, blind: 3, stagger: 4, spin: 4, openaerial: 4 };
 const SK = {}, CC = {}; try { JSON.parse(fs.readFileSync(skillsJson, 'utf8').replace(/^\uFEFF/, '')).forEach(s => { SK[s.SkillId] = [s.ChineseName || '', s.Icon || ''];
   const k = new Set(); (s.Effects || []).forEach(e => { const t = CCT[String(e.Type || '').toLowerCase()]; if (t !== undefined) k.add(t); }); if (k.size) CC[s.SkillId] = [...k]; }); } catch {}
 const P = {}; const G = id => P[id] ||= {};
@@ -16,7 +16,7 @@ const used = new Set();
 // 施法 0x0021 / 中断 0x002A
 for (const q of rows(base + 'x-casts-0021.csv')) { const id = byName[q[2]]; if (id === undefined) continue; const o = G(id); o.c ||= [0, 0, {}]; const intr = q[11] === '是'; o.c[0]++; if (intr) o.c[1]++; const s = (o.c[2][q[4]] ||= [0, 0]); s[0]++; if (intr) s[1]++; }
 // 受到的增益/减益 0x0012
-for (const q of rows(base + 'x-buffs-0012.csv')) { const id = byName[q[1]]; if (id === undefined) continue; const o = G(id); o.bf ||= {}; const k = q[3] + '|' + q[8]; const kind = q[6] && q[2] ? (q[6] === q[2] ? 1 : 2) : 0; const cc = CC[+q[3]]; if (cc) { o.cc ||= [0, 0, 0, 0]; cc.forEach(i => o.cc[i] += +q[11] || 1); }
+for (const q of rows(base + 'x-buffs-0012.csv')) { const id = byName[q[1]]; if (id === undefined) continue; const o = G(id); o.bf ||= {}; const k = q[3] + '|' + q[8]; const kind = q[6] && q[2] ? (q[6] === q[2] ? 1 : 2) : 0; const cc = CC[+q[3]]; if (cc) { o.cc ||= [0, 0, 0, 0, 0]; cc.forEach(i => o.cc[i] += +q[11] || 1); }
   const b = (o.bf[k] ||= [+q[3], +q[8], kind, 0, {}]); b[3] += +q[11] || 1; if (q[5]) b[4][q[5]] = (b[4][q[5]] || 0) + (+q[11] || 1); }
 // 外观装备 0x0024（取最后一次）
 for (const q of rows(base + 'x-equip-0024.csv')) { const id = byName[q[1]]; if (id === undefined) continue; G(id).e = q[4].trim().split(/\s+/).map(Number).filter(Boolean); }
