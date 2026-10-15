@@ -86,11 +86,22 @@ function Publish-Battles([string]$d, [string]$iso, [string]$base, [string]$hitsP
   if (-not $frames -or -not (Test-Path $frames)) { Write-Warning "找不到解码帧文件（$frames），沙盘将没有坐标"; $frames = '' }
   if (-not ('AionBattleExtract' -as [type])) { Add-Type -Path (Join-Path $Site 'tools\BattleExtract.cs') }
   Get-ChildItem (Join-Path $DataDir 'tracks') -Filter "$iso-b*.js" -ErrorAction SilentlyContinue | Remove-Item
+  Get-ChildItem (Join-Path $DataDir 'prof') -Filter "$iso.js" -ErrorAction SilentlyContinue | Remove-Item
+  if (Test-Path (Join-Path $DataDir "sk\$iso")) { Remove-Item (Join-Path $DataDir "sk\$iso") -Recurse -Force }
   $log = [AionBattleExtract]::Run($facts, @($frames | Where-Object { $_ }), (Join-Path $ReleaseDir 'npc-map-anchors.tsv'),
     (Join-Path $ReleaseDir 'mapbounds.tsv'), $DataDir, $iso, $TrackSampleSec, $hitsPath)
   $log -split "`n" | Where-Object { $_ -notmatch '^MAPS:' } | ForEach-Object { Write-Host "  $_" }
+  if ($log -match 'SKIP_DAY:') {
+    Write-Host "  跳过 $iso：没有参战人数 > 50 的战斗，不发布这一天。"
+    foreach ($x in @("$iso.json","$iso.battles.json",(Join-Path 'day' "$iso.js"))) {
+      $fp = Join-Path $DataDir $x; if (Test-Path $fp) { Remove-Item $fp -Force }
+    }
+    $script:SkippedDays += $iso
+    return
+  }
   $script:MapsUsed += @(($log -split "`n" | Where-Object { $_ -match '^MAPS:' }) -replace '^MAPS:', '' -split ',' | Where-Object { $_ })
 }
+$script:SkippedDays = @()
 $script:MapsUsed = @()
 
 $targets = if ($All) { Get-AvailableDates } elseif ($Date) { ,($Date -replace '-', '') } else { ,(Get-AvailableDates | Select-Object -Last 1) }

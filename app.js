@@ -235,6 +235,15 @@
 
   // —— 玩家资料卡（点名字打开；技能/击杀和跨日索引按需加载）——
   async function getProf(d) { if (!(window.AION_PROF && window.AION_PROF[d])) await loadScript(`data/prof/${d}.js`); return window.AION_PROF[d]; }
+  async function getSk(d, id) { const n = id % 16; if (!(window.AION_SK && window.AION_SK[d] && window.AION_SK[d][n])) await loadScript(`data/sk/${d}/${n}.js`); return window.AION_SK[d][n][id] || []; }
+  // 技能表（单独函数，方便以后换皮）：[技能, PvP, PvE, PvP命中, PvE命中, 可判暴击, 暴击, 最大]
+  function skillTable(sk) {
+    if (!sk.length) return '<p class="note">无</p>';
+    const pct = (a, b) => b ? (100 * a / b).toFixed(1) + '%' : '-';
+    return `<div class="pf-scroll"><table class="kv pf-skills"><tr><th class="t">技能</th><th>总伤害</th><th>PvP</th><th>PvE</th><th>命中</th><th>暴击率</th><th>平均</th><th>最大</th></tr>${sk.map(s => { const tot = s[1] + s[2], n = s[3] + s[4];
+      return `<tr><td class="t">${s[0] === 0 ? '普攻' : '#' + s[0]}</td><td>${fmt(tot)}</td><td>${fmt(s[1])}</td><td>${fmt(s[2])}</td><td>${fmt(n)}</td><td>${s[0] === 0 ? '-' : pct(s[6], s[5])}</td><td>${fmt(n ? Math.round(tot / n) : 0)}</td><td>${fmt(s[7])}</td></tr>`; }).join('')}</table></div>
+      <p class="note">共 ${sk.length} 个技能，来自统一账本去重后的命中。技能名没有可靠对照表，只显示协议技能编号。暴击率 = marker 0xCA00/0xC200 占比；普攻不判暴击。</p>`;
+  }
   async function getPlayers() { if (!window.AION_PLAYERS) await loadScript('data/players.js'); return window.AION_PLAYERS; }
   async function openProfile(id) {
     const p = byId[id]; if (!p) return;
@@ -244,14 +253,14 @@
     const kd = (pr && pr.kd && pr.kd[p.name]) || [0, 0];
     const bt = battles.map((b, i) => { const d = b.damage.find(x => x.id === id); const k = b.kills.filter(x => x.killer === p.name).length, v = b.kills.filter(x => x.victim === p.name).length;
       return (d || k || v) ? { i, b, pvp: d ? d.pvpSkill + d.pvpAuto : 0, pve: d ? d.pveSkill + d.pveAuto : 0, k, v } : null; }).filter(Boolean);
-    const sk = (pr && pr.s && pr.s[id]) || [];
+    let sk = []; try { sk = await getSk(data.date, id); } catch {}
     const days = (pl && pl[p.name + '|' + p.race]) || [];
     const row = (a, b) => `<tr><td class="t">${a}</td><td>${b}</td></tr>`;
     inner.innerHTML = `<button class="px">✕</button><h2>${esc(p.name)} ${race(p.race)}</h2>
       <table class="kv">${row('军团', esc(p.legion) || '（无）')}${p.classId ? row('职业', cls(p.classId)) : ''}${row('日期', data.date)}</table>
       <h4>当天伤害</h4><table class="kv">${row('PvP 技能', fmt(p.pvpSkill))}${row('PvP 普攻', fmt(p.pvpAuto))}${row('PvE 技能', fmt(p.pveSkill))}${row('PvE 普攻', fmt(p.pveAuto))}${row('击杀 / 阵亡', `${kd[0]} / <span class="dead">${kd[1]}</span>`)}</table>
       <h4>参与的战斗（${bt.length}）</h4>${bt.length ? `<table class="kv"><tr><th class="t">场次</th><th>PvP</th><th>PvE</th><th>击杀</th><th>阵亡</th></tr>${bt.map(x => `<tr><td class="t"><a href="#" data-b="${x.i}">第 ${x.b.no} 场 ${hm(x.b.start)} ${esc(mapName(x.b.map))}</a></td><td>${fmt(x.pvp)}</td><td>${fmt(x.pve)}</td><td>${x.k}</td><td>${x.v}</td></tr>`).join('')}</table>` : '<p class="note">无</p>'}
-      <h4>伤害最高的技能</h4>${sk.length ? `<table class="kv"><tr><th class="t">技能</th><th>PvP</th><th>PvE</th><th>命中</th></tr>${sk.map(s => `<tr><td class="t">${s[0] === 0 ? '普攻' : '技能 #' + s[0]}</td><td>${fmt(s[1])}</td><td>${fmt(s[2])}</td><td>${fmt(s[3])}</td></tr>`).join('')}</table><p class="note">技能只显示协议里的技能编号，没有可靠的中文名对照表。</p>` : '<p class="note">无</p>'}
+      <h4>使用的技能</h4>${skillTable(sk)}
       <h4>出现过的日期（${days.length}）</h4>${days.length ? `<table class="kv"><tr><th class="t">日期</th><th>PvP</th><th>PvE</th></tr>${days.map(x => `<tr><td class="t"><a href="#" data-d="${x[0]}" data-id="${x[1]}">${x[0]}</a></td><td>${fmt(x[2])}</td><td>${fmt(x[3])}</td></tr>`).join('')}</table><p class="note">按“名字+阵营”跨日匹配。</p>` : '<p class="note">-</p>'}`;
     inner.querySelectorAll('a[data-b]').forEach(a => a.onclick = e => { e.preventDefault(); box.style.display = 'none'; showTab('battles'); curBattle = +a.dataset.b; renderBattleList(); renderBattleDetail(curBattle); });
     inner.querySelectorAll('a[data-d]').forEach(a => a.onclick = async e => { e.preventDefault(); const d = a.dataset.d, pid = +a.dataset.id;

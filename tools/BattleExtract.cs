@@ -13,7 +13,7 @@ using System.Text.Json;
 public static class AionBattleExtract
 {
     sealed class Kill { public DateTime T; public string K = "", V = ""; }
-    sealed class Hit { public DateTime T; public int A, Tg, Sk; public long Amt; public bool Auto; }
+    sealed class Hit { public DateTime T; public int A, Tg, Sk, Mk = -1; public long Amt; public bool Auto; }
     sealed class Battle
     {
         public DateTime S, E; public List<Kill> Kills = new(); public Dictionary<int, long[]> Dmg = new();
@@ -85,7 +85,7 @@ public static class AionBattleExtract
             {
                 var p = l.Split(',');
                 hits.Add(new Hit { T = DateTime.Parse(p[0], CultureInfo.InvariantCulture, DateTimeStyles.AdjustToUniversal | DateTimeStyles.AssumeUniversal),
-                    A = Int(p[1]), Tg = p[6] == "1" ? Int(p[2]) : 0, Sk = Int(p[3]), Amt = long.Parse(p[4]), Auto = p[5] == "1" });
+                    A = Int(p[1]), Tg = p[6] == "1" ? Int(p[2]) : 0, Sk = Int(p[3]), Amt = long.Parse(p[4]), Auto = p[5] == "1", Mk = p.Length > 7 ? Convert.ToInt32(p[7], 16) : -1 });
             }
             log.AppendLine($"伤害口径：统一账本 {Path.GetFileName(hitsPath)}，{hits.Count} 击");
         }
@@ -141,6 +141,18 @@ public static class AionBattleExtract
             var b = Find(h.T); if (b == null) continue;
             if (!b.Dmg.TryGetValue(h.A, out var d)) b.Dmg[h.A] = d = new long[4];
             int idx = (h.Tg > 0 ? 0 : 2) + (h.Auto ? 1 : 0); d[idx] += h.Amt;
+        }
+
+                // 只保留参战人数（本场有 PvP 伤害的 distinct PersonIndex）> 50 的战斗；不够的场次整场丢弃
+        const int MinPlayers = 50;
+        int before = battles.Count;
+        battles = battles.Where(b => b.Dmg.Count(kv => kv.Value[0] + kv.Value[1] > 0) > MinPlayers).ToList();
+        log.AppendLine($"分场门槛：参战人数 > {MinPlayers}；保留 {battles.Count}/{before} 场");
+        if (battles.Count == 0)
+        {
+            log.AppendLine("SKIP_DAY:no_qualifying_battles");
+            log.Append("MAPS:");
+            return log.ToString();
         }
 
         // ── 3. 帧：坐标 0x0017 + NPC 生成 0x000E（认地图） ──
@@ -240,24 +252,30 @@ public static class AionBattleExtract
             File.WriteAllText(Path.Combine(outDir, "tracks", key + ".js"), "(window.AION_TRACKS=window.AION_TRACKS||{})[" + JsonSerializer.Serialize(key) + "]=" + JsonSerializer.Serialize(tr, new JsonSerializerOptions { Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping }) + ";", new UTF8Encoding(false));
         }
         var opts = new JsonSerializerOptions { Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
-        // 玩家资料卡：每人前 8 个技能（按伤害；技能0 = 普攻）+ 当天击杀/阵亡（按名字，4 秒去重后的击杀消息）
+        // 玩家资料卡：当天击杀/阵亡（按名字，4 秒去重后的击杀消息）→ prof/{date}.js
+        // 全部技能（统一账本去重后的命中；技能0 = 普攻）→ sk/{date}/{personId % 16}.js，打开资料卡时才按分片加载
+        // 每个技能：[技能, PvP伤害, PvE伤害, PvP命中, PvE命中, 可判暴击命中数, 暴击数, 单击最大]
+        // 暴击只按技能 marker 判：0x0A00/0x0200 = 普通，0xCA00/0xC200 = 暴击；普攻 marker 不判
         var sk = new Dictionary<int, Dictionary<int, long[]>>();
         foreach (var h in hits)
         {
             if (!sk.TryGetValue(h.A, out var m)) sk[h.A] = m = new();
             int key = h.Auto ? 0 : h.Sk;
-            if (!m.TryGetValue(key, out var v)) m[key] = v = new long[3];
-            v[h.Tg > 0 ? 0 : 1] += h.Amt; v[2]++;
+            if (!m.TryGetValue(key, out var v)) m[key] = v = new long[7];
+            bool pvp = h.Tg > 0; v[pvp ? 0 : 1] += h.Amt; v[pvp ? 2 : 3]++;
+            if (!h.Auto && h.Mk >= 0) { int hb = h.Mk >> 8; if (hb is 0x0A or 0x02 or 0xCA or 0xC2) { v[4]++; if (hb is 0xCA or 0xC2) v[5]++; } }
+            if (h.Amt > v[6]) v[6] = h.Amt;
         }
         var kd = new Dictionary<string, int[]>();
         foreach (var k in dk) { (kd.TryGetValue(k.K, out var a) ? a : kd[k.K] = new int[2])[0]++; (kd.TryGetValue(k.V, out var b2) ? b2 : kd[k.V] = new int[2])[1]++; }
-        var prof = new
-        {
-            s = sk.ToDictionary(x => x.Key.ToString(), x => x.Value.OrderByDescending(v => v.Value[0] + v.Value[1]).Take(8).Select(v => new long[] { v.Key, v.Value[0], v.Value[1], v.Value[2] }).ToList()),
-            kd
-        };
         Directory.CreateDirectory(Path.Combine(outDir, "prof"));
-        File.WriteAllText(Path.Combine(outDir, "prof", date + ".js"), "(window.AION_PROF=window.AION_PROF||{})[" + JsonSerializer.Serialize(date) + "]=" + JsonSerializer.Serialize(prof, opts) + ";", new UTF8Encoding(false));
+        File.WriteAllText(Path.Combine(outDir, "prof", date + ".js"), "(window.AION_PROF=window.AION_PROF||{})[" + JsonSerializer.Serialize(date) + "]=" + JsonSerializer.Serialize(new { kd }, opts) + ";", new UTF8Encoding(false));
+        var skDir = Path.Combine(outDir, "sk", date); if (Directory.Exists(skDir)) Directory.Delete(skDir, true); Directory.CreateDirectory(skDir);
+        for (int sh = 0; sh < 16; sh++)
+        {
+            var part = sk.Where(x => x.Key % 16 == sh).ToDictionary(x => x.Key.ToString(), x => x.Value.OrderByDescending(v => v.Value[0] + v.Value[1]).Select(v => new long[] { v.Key, v.Value[0], v.Value[1], v.Value[2], v.Value[3], v.Value[4], v.Value[5], v.Value[6] }).ToList());
+            File.WriteAllText(Path.Combine(skDir, sh + ".js"), "((window.AION_SK=window.AION_SK||{})[" + JsonSerializer.Serialize(date) + "]||(window.AION_SK[" + JsonSerializer.Serialize(date) + "]={}))[" + sh + "]=" + JsonSerializer.Serialize(part, opts) + ";", new UTF8Encoding(false));
+        }
         File.WriteAllText(Path.Combine(outDir, date + ".battles.json"), JsonSerializer.Serialize(summary, opts), new UTF8Encoding(false));
         log.AppendLine($"战斗 {battles.Count} 场；地图 {string.Join(",", mapsUsed)}");
         log.Append("MAPS:" + string.Join(",", mapsUsed));
