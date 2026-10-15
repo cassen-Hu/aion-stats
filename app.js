@@ -78,7 +78,7 @@
     if (curBattle >= 0) renderBattleDetail(curBattle);
     const sum = (a, k) => a.reduce((s, r) => s + r[k], 0), all = data.players;
     const ep = sum(all.filter(p => p.race === 0), 'pvp'), ap = sum(all.filter(p => p.race === 1), 'pvp'), tp = sum(all, 'pvp'), sh = ep + ap ? Math.round(100 * ep / (ep + ap)) : 50;
-    $('#summary').innerHTML = [['PvP 总伤害（技能+普攻）', fmt(tp)], ['玩家', fmt(all.length)], ['军团', fmt(data.legions.length)], ['战斗场次（>50人）', battles.length], ['阵亡（各场合计）', dhtml(dsplit(battles.flatMap(b => b.kills)), '<br>')]]
+    $('#summary').innerHTML = [['PvP 总伤害（技能+普攻）', sp(ep, ap, tp, '<br>')], ['玩家', sp(...rc(all), all.length, '<br>')], ['军团', sp(...rc(data.legions), data.legions.length, '<br>')], ['战斗场次（>50人）', battles.length], ['阵亡（各场合计）', dhtml(dsplit(battles.flatMap(b => b.kills)), '<br>')]]
       .map(([a, b]) => `<div class="card"><span>${a}</span><b>${b}</b></div>`).join('') +
       `<div class="card wide"><span>阵营 PvP 伤害（技能+普攻）· ${data.date}</span><div class="rbar"><i class="e" style="width:${sh}%">天族 ${fmt(ep)}</i><i class="a">魔族 ${fmt(ap)}</i></div></div>`;
   }
@@ -86,6 +86,8 @@
   // 阵亡按阵营拆分（按阵亡者名字查当天名单；阵营未知只计入总数）
   let raceByName = {};
   function dsplit(kills) { let e = 0, m = 0; kills.forEach(k => { const r = (k.vr === 0 || k.vr === 1) ? k.vr : raceByName[k.victim]; if (r === 0) e++; else if (r === 1) m++; }); return { t: kills.length, e, m }; }
+  const sp = (e, m, t, sep) => `${fmt(t)}${sep || ' '}<span class="ds"><span class="r0">天 ${fmt(e)}</span> <span class="r1">魔 ${fmt(m)}</span></span>`;
+  const rc = a => [a.filter(r => r.race === 0).length, a.filter(r => r.race === 1).length];
   const dhtml = (d, sep) => `${fmt(d.t)}${sep || ' '}<span class="ds"><span class="r0">天 ${fmt(d.e)}</span> <span class="r1">魔 ${fmt(d.m)}</span></span>`;
   // —— 战斗场次 ——
   const mapName = m => m ? ((MAPS[m] && MAPS[m].name) || m) : '未识别地图';
