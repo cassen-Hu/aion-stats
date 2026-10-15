@@ -1,4 +1,4 @@
-<#
+﻿<#
   水表数据每日发布脚本
   用法：
     .\publish-daily.ps1                 # 发布 Evidence 里最新一天
@@ -59,9 +59,13 @@ function Publish-One([string]$d) {
       sources = 0; pvpSkill = (L $g.PvP技能); pvpAuto = (L $g.PvP普攻); pveSkill = (L $g.PvE技能); pveAuto = (L $g.PvE普攻) } }
   # 军团 = 同军团同阵营玩家（新口径）求和；人数 = 有伤害的成员
   # 阵营主来源：服务端 0x0020 PlayerInfo race@37（0=天族 1=魔族），全天抓包扫出的 tools\packet-race.tsv；没有该包的玩家才沿用名单
-  $pr = @{}; $prf = Join-Path $Site 'tools\packet-race.tsv'
-  if (Test-Path $prf) { foreach ($l in [IO.File]::ReadAllLines($prf, $Utf8)) { $q = $l.Split("`t"); if ($q.Length -eq 2) { $pr[$q[0]] = [long]$q[1] } } }
-  foreach ($p in $players) { if ($pr.ContainsKey($p.name)) { $p.race = $pr[$p.name] } }
+  # 严格当天：阵营只取当天抓包 0x0020@37（tools\build-day-race.js → tools\day-race.tsv），没有包的玩家阵营＝未知(-1)，不跨日、不用名单、不推断
+  $frames = $FramesFile
+  if (-not $frames -and (Test-Path "$base.txt")) { $m = Get-Content "$base.txt" -Encoding UTF8 -TotalCount 5 | Select-String '文件:\s*(.+\.ndjson)'; if ($m) { $frames = $m.Matches[0].Groups[1].Value.Trim() } }
+  $drf = Join-Path $Site 'tools\day-race.tsv'
+  & node (Join-Path $Site 'tools\build-day-race.js') $drf $frames | ForEach-Object { Write-Host "  $_" }
+  $pr = @{}; foreach ($l in [IO.File]::ReadAllLines($drf, $Utf8)) { $q = $l.Split("`t"); if ($q.Length -eq 2) { $pr[$q[0]] = [long]$q[1] } }
+  foreach ($p in $players) { $p.race = if ($pr.ContainsKey($p.name)) { $pr[$p.name] } else { -1 } }
   # 同阵营不能互相攻击：账本命中里攻击者与目标同阵营的（切磋/错误）从 PvP 里扣掉，不计入任何伤害
   $hp = "$lbase.x-ledger-hits.csv"; $rid = @{}; foreach ($p in $players) { if ($p.race -in 0, 1) { $rid[[long]$p.id] = $p.race } }; $byId = @{}; foreach ($p in $players) { $byId[[long]$p.id] = $p }
   $sfTot = 0L; $pvpBefore = [long]($players | ForEach-Object { $_.pvpSkill + $_.pvpAuto } | Measure-Object -Sum).Sum
@@ -106,13 +110,7 @@ function Publish-Battles([string]$d, [string]$iso, [string]$base, [string]$hitsP
   Get-ChildItem (Join-Path $DataDir 'tracks') -Filter "$iso-b*.js" -ErrorAction SilentlyContinue | Remove-Item
   Get-ChildItem (Join-Path $DataDir 'prof') -Filter "$iso.js" -ErrorAction SilentlyContinue | Remove-Item
   if (Test-Path (Join-Path $DataDir "sk\$iso")) { Remove-Item (Join-Path $DataDir "sk\$iso") -Recurse -Force }
-  # 阵营参照表 tools\day-race.tsv：其它已发布日期的玩家（名字→阵营）在前，当天 B25 名单在后（当天优先）
-  $rl = [System.Collections.Generic.List[string]]::new()
-  Get-ChildItem $DataDir -Filter '????-??-??.json' | Where-Object { $_.BaseName -ne $iso } | ForEach-Object {
-    ([IO.File]::ReadAllText($_.FullName, $Utf8) | ConvertFrom-Json).players | Where-Object { $_.race -in 0, 1 } | ForEach-Object { $rl.Add("$($_.name)`t$($_.race)") } }
-  if (Test-Path "$base.s2-players.csv") { Import-Csv "$base.s2-players.csv" -Encoding UTF8 | Where-Object { $_.Race -in '0', '1' } | ForEach-Object { $rl.Add("$($_.Name)`t$($_.Race)") } }
-  $prf2 = Join-Path $Site 'tools\packet-race.tsv'; if (Test-Path $prf2) { foreach ($l in [IO.File]::ReadAllLines($prf2, $Utf8)) { if ($l) { $rl.Add($l) } } }   # 0x0020 包阵营最后写入＝优先
-  [IO.File]::WriteAllLines((Join-Path $Site 'tools\day-race.tsv'), $rl, $Utf8)
+  # 阵营表 tools\day-race.tsv 已在 Publish-One 里由当天抓包生成（严格当天）
   $log = [AionBattleExtract]::Run($facts, @($frames | Where-Object { $_ }), (Join-Path $ReleaseDir 'npc-map-anchors.tsv'),
     (Join-Path $ReleaseDir 'mapbounds.tsv'), $DataDir, $iso, $TrackSampleSec, $hitsPath)
   $xb = "$base."; if (-not (Test-Path "$($xb)x-casts-0021.csv")) { $xb = Join-Path $ExtrasDir (Split-Path "$base." -Leaf) }

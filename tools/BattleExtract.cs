@@ -256,8 +256,8 @@ public static class AionBattleExtract
         {
             int kr = RaceOf(k.K), vr = RaceOf(k.V);
             if (kr >= 0 && vr >= 0) { chk++; if (kr != vr) ok++; else same++; }
-            if (vr >= 0) { k.VR = vr; vByIdent++; } else if (kr >= 0) { k.VR = 1 - kr; vByOpp++; } else { k.VR = -1; vUnk++; }
-            k.KR = kr >= 0 ? kr : (vr >= 0 ? 1 - vr : -1);
+            if (vr >= 0) { k.VR = vr; vByIdent++; } else { k.VR = -1; vUnk++; }   // 严格：不按击杀者对立推断
+            k.KR = kr;
         }
         log.AppendLine($"阵亡阵营：共 {dk.Count}；身份帧/名单直接 {vByIdent}；击杀者对立推断 {vByOpp}；未知 {vUnk}。校验（双方阵营都已知 {chk} 条）：异阵营 {ok}，同阵营 {same}");
         var unkNames = dk.Where(k => k.VR < 0).GroupBy(k => k.V).OrderByDescending(g => g.Count()).Take(15).Select(g => $"{g.Key}({g.Count()}; 击杀者 {g.First().K})");
