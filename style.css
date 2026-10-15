@@ -75,3 +75,5 @@ footer{color:var(--dim);font-size:12px;text-align:center;padding:16px}
 .cards .wide b{font-size:20px}
 
 .pbox{min-width:0;max-width:min(780px,calc(100vw - 20px))}.pbox .kv td:last-child{white-space:nowrap}
+
+.about-btn{background:none;border:1px solid var(--acc);color:var(--gold);border-radius:6px;padding:6px 12px;cursor:pointer;font:inherit}.about-btn:hover{background:var(--acc);color:#000}.about .pbox{max-width:min(680px,calc(100vw - 20px))}.about p,.about li{color:var(--txt);line-height:1.8;margin:6px 0}.about ol{padding-left:22px}

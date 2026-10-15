@@ -18,6 +18,7 @@
     <label>日期 <select id="date"></select></label>
     <label>阵营 <select id="race"><option value="">全部</option><option value="0">天族</option><option value="1">魔族</option></select></label>
     <label>职业 <select id="cls"><option value="">全部</option></select></label>
+    <button id="aboutBtn" class="about-btn" type="button">关于我</button>
     <input id="q" type="search" placeholder="搜索角色名 / 军团">
   </div>
   <nav id="tabs">
@@ -62,8 +63,30 @@
   <section id="skills" class="tab"><p class="note">协议层面的伤害记录结构统计。</p><div class="tw"><table id="ts"></table></div></section>
   <p class="note">数据来自水表解析的“候选值”，PvP/PvE 合计 = 技能 + 普攻；为解析统计，非游戏官方数值。时间为北京时间。</p>
 </main>
-<footer><picture><source srcset="img/logo-64.webp" type="image/webp"><img class="flogo" src="img/logo-64.png" width="32" height="32" alt="草"></picture><div class="credit">草老师独立自主开发 / 联系VX：Cassen999 / 抖音关注：44868598436</div><div id="foot"></div></footer>
-<script src="data/bundle.js"></script>
+<footer><picture><source srcset="img/logo-64.webp" type="image/webp"><img class="flogo" src="img/logo-64.png" width="32" height="32" alt="草"></picture><div id="foot"></div></footer>
+<div id="about" class="pmask about"><div class="pbox"><button class="px" type="button">✕</button>
+<h2>关于我</h2>
+<p>您好，欢迎访问我的个人技术展示网站！</p>
+<p>本站为个人非经营性兴趣站点，仅用于记录个人学习历程、技术实践成果与原创项目作品展示，不提供任何商业服务、付费定制、交易售卖等经营性内容，仅作为个人网络技术分享与自我展示平台。</p>
+<h4>个人简介</h4>
+<p>大家好，我是：草老师。是一名来自永恒之塔的天族玩家，热爱计算机技术与程序开发的个人爱好者，长期专注于网络研究、桌面程序开发、数据统计、可视化工具开发等技术方向。</p>
+<p>日常喜欢独立研究、调试、优化各类技术方案，沉淀个人原创项目，持续打磨实用、轻量化、稳定的自研工具，热爱技术、乐于分享。</p>
+<h4>本站宗旨</h4>
+<p>本站所有内容均为个人学习总结与原创作品展示，无任何企业性质、无任何商业宣传、不开展任何盈利类经营活动。</p>
+<p>所有展示的项目、代码成果、功能演示，仅用作技术交流、学习参考、个人成果存档，仅供爱好者交流探讨使用。</p>
+<h4>交流联系</h4>
+<p>欢迎同好朋友、技术爱好者前来纯技术交流、学习探讨。</p>
+<p>如需技术沟通、项目交流、技术心得探讨，可通过以下方式联系：</p>
+<p>微信：cassen999<br>邮箱：hu2222jian@outlook.com</p>
+<h4>网站声明</h4>
+<ol>
+<li>本站为个人非经营性网站，严格遵守《非经营性互联网信息服务备案管理办法》相关规定。</li>
+<li>本站无任何商业行为、无接单定制、无收费服务、无产品售卖、无企业相关内容。</li>
+<li>站内所有内容均为个人原创学习记录，仅用于技术交流，不含任何违规、盈利性质内容。</li>
+<li>若本站内容有可交流、优化的地方，欢迎技术友好沟通指正。</li>
+</ol>
+</div></div>
+<script>(function(){var m=document.getElementById('about');document.getElementById('aboutBtn').onclick=function(){m.style.display='flex'};m.onclick=function(e){if(e.target===m||e.target.classList.contains('px'))m.style.display='none'};document.addEventListener('keydown',function(e){if(e.key==='Escape')m.style.display='none'})})();</script><script src="data/bundle.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
