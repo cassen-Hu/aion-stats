@@ -5,10 +5,15 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>永恒之塔 战斗数据日报</title>
 <link rel="stylesheet" href="style.css">
+<link rel="icon" href="favicon.ico" sizes="any">
+<link rel="icon" type="image/png" sizes="32x32" href="img/favicon-32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="img/favicon-16.png">
+<link rel="apple-touch-icon" sizes="180x180" href="img/apple-touch-icon.png">
+<meta name="theme-color" content="#0a0d14">
 </head>
 <body>
 <header>
-  <h1>⚔ 永恒之塔 战斗数据日报</h1>
+  <h1><picture><source srcset="img/logo-128.webp" type="image/webp"><img class="logo" src="img/logo-128.png" width="40" height="40" alt="草"></picture><span>永恒之塔 战斗数据日报</span></h1>
   <div class="controls">
     <label>日期 <select id="date"></select></label>
     <label>阵营 <select id="race"><option value="">全部</option><option value="0">天族</option><option value="1">魔族</option></select></label>
@@ -57,7 +62,7 @@
   <section id="skills" class="tab"><p class="note">协议层面的伤害记录结构统计。</p><div class="tw"><table id="ts"></table></div></section>
   <p class="note">数据来自水表解析的“候选值”，PvP/PvE 合计 = 技能 + 普攻；为解析统计，非游戏官方数值。时间为北京时间。</p>
 </main>
-<footer id="foot"></footer>
+<footer><picture><source srcset="img/logo-64.webp" type="image/webp"><img class="flogo" src="img/logo-64.png" width="32" height="32" alt="草"></picture><div class="credit">草老师独立自主开发 / 联系VX：Cassen999 / 抖音关注：44868598436</div><div id="foot"></div></footer>
 <script src="data/bundle.js"></script>
 <script src="app.js"></script>
 </body>

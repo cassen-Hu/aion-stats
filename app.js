@@ -75,9 +75,10 @@
     renderBattleList();
     if (curBattle >= 0) renderBattleDetail(curBattle);
     const sum = (a, k) => a.reduce((s, r) => s + r[k], 0), all = data.players;
-    $('#summary').innerHTML = [['日期', data.date], ['玩家', fmt(all.length)], ['军团', fmt(data.legions.length)], ['战斗场次', battles.length],
-      ['天族 PvP', fmt(sum(all.filter(p => p.race === 0), 'pvp'))], ['魔族 PvP', fmt(sum(all.filter(p => p.race === 1), 'pvp'))]]
-      .map(([a, b]) => `<div class="card"><span>${a}</span><b>${b}</b></div>`).join('');
+    const ep = sum(all.filter(p => p.race === 0), 'pvp'), ap = sum(all.filter(p => p.race === 1), 'pvp'), tp = sum(all, 'pvp'), sh = ep + ap ? Math.round(100 * ep / (ep + ap)) : 50;
+    $('#summary').innerHTML = [['PvP 总伤害（技能+普攻）', fmt(tp)], ['玩家', fmt(all.length)], ['军团', fmt(data.legions.length)], ['战斗场次（>50人）', battles.length]]
+      .map(([a, b]) => `<div class="card"><span>${a}</span><b>${b}</b></div>`).join('') +
+      `<div class="card wide"><span>阵营 PvP 伤害（技能+普攻）· ${data.date}</span><div class="rbar"><i class="e" style="width:${sh}%">天族 ${fmt(ep)}</i><i class="a">魔族 ${fmt(ap)}</i></div></div>`;
   }
 
   // —— 战斗场次 ——
@@ -90,7 +91,7 @@
       const rows = battleRows(b), pvp = rows.reduce((s, r) => s + r.pvp, 0);
       return `<div class="bcard ${i === curBattle ? 'on' : ''}" data-i="${i}"><h3>第 ${b.no} 场 · ${esc(mapName(b.map))}</h3>
         <div class="m">${hm(b.start)} – ${hm(b.end)}（${b.minutes} 分钟）${b.rule === 'activity' ? ' · 按交战活动分段' : ''}</div>
-        <div class="s"><span>⚔ ${rows.length} 人</span><span class="dead">✕ ${b.kills.length}</span><span>PvP ${fmt(pvp)}</span></div></div>`;
+        <div class="s"><span>⚔ ${rows.filter(r => r.pvp > 0).length} 人</span><span class="dead">✕ ${b.kills.length}</span><span>PvP ${fmt(pvp)}</span></div></div>`;
     }).join('') : '<p class="note">这一天没有切分出战斗。</p>';
     $('#blist').querySelectorAll('.bcard').forEach(c => c.onclick = () => { curBattle = +c.dataset.i; renderBattleList(); renderBattleDetail(curBattle); });
     if (curBattle < 0) $('#bdetail').innerHTML = battles.length ? '<p class="note">点上面任意一场查看详情。</p>' : '';
@@ -259,7 +260,7 @@
     inner.innerHTML = `<button class="px">✕</button><h2>${esc(p.name)} ${race(p.race)}</h2>
       <table class="kv">${row('军团', esc(p.legion) || '（无）')}${p.classId ? row('职业', cls(p.classId)) : ''}${row('日期', data.date)}</table>
       <h4>当天伤害</h4><table class="kv">${row('PvP 技能', fmt(p.pvpSkill))}${row('PvP 普攻', fmt(p.pvpAuto))}${row('PvE 技能', fmt(p.pveSkill))}${row('PvE 普攻', fmt(p.pveAuto))}${row('击杀 / 阵亡', `${kd[0]} / <span class="dead">${kd[1]}</span>`)}</table>
-      <h4>参与的战斗（${bt.length}）</h4>${bt.length ? `<table class="kv"><tr><th class="t">场次</th><th>PvP</th><th>PvE</th><th>击杀</th><th>阵亡</th></tr>${bt.map(x => `<tr><td class="t"><a href="#" data-b="${x.i}">第 ${x.b.no} 场 ${hm(x.b.start)} ${esc(mapName(x.b.map))}</a></td><td>${fmt(x.pvp)}</td><td>${fmt(x.pve)}</td><td>${x.k}</td><td>${x.v}</td></tr>`).join('')}</table>` : '<p class="note">无</p>'}
+      <h4>参与的战斗（${bt.length}）</h4>${bt.length ? `<div class="pf-scroll"><table class="kv"><tr><th class="t">场次</th><th>PvP</th><th>PvE</th><th>击杀</th><th>阵亡</th></tr>${bt.map(x => `<tr><td class="t"><a href="#" data-b="${x.i}">第 ${x.b.no} 场 ${hm(x.b.start)} ${esc(mapName(x.b.map))}</a></td><td>${fmt(x.pvp)}</td><td>${fmt(x.pve)}</td><td>${x.k}</td><td>${x.v}</td></tr>`).join('')}</table></div>` : '<p class="note">无</p>'}
       <h4>使用的技能</h4>${skillTable(sk)}
       <h4>出现过的日期（${days.length}）</h4>${days.length ? `<table class="kv"><tr><th class="t">日期</th><th>PvP</th><th>PvE</th></tr>${days.map(x => `<tr><td class="t"><a href="#" data-d="${x[0]}" data-id="${x[1]}">${x[0]}</a></td><td>${fmt(x[2])}</td><td>${fmt(x[3])}</td></tr>`).join('')}</table><p class="note">按“名字+阵营”跨日匹配。</p>` : '<p class="note">-</p>'}`;
     inner.querySelectorAll('a[data-b]').forEach(a => a.onclick = e => { e.preventDefault(); box.style.display = 'none'; showTab('battles'); curBattle = +a.dataset.b; renderBattleList(); renderBattleDetail(curBattle); });
