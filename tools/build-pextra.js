@@ -2,7 +2,7 @@
 // 用法：node tools/build-pextra.js <siteDataDir> <date> <evidenceBase> <factsCsv> <skillsJson>
 // evidenceBase = AionCaptureReview 输出前缀（…\B25-PL-import-real-YYYYMMDD.），读 x-casts-0021 / x-buffs-0012 / x-equip-0024 / x-deaths-0025 / x-npc-target-0028
 const fs = require('fs'), vm = require('vm'), path = require('path'), readline = require('readline');
-const [dataDir, date, base, factsPath, skillsJson] = process.argv.slice(2);
+const [dataDir, date, base, factsPath, skillsJson, potionsJson] = process.argv.slice(2);
 const w = {}; vm.runInNewContext(fs.readFileSync(path.join(dataDir, 'day', date + '.js'), 'utf8'), { window: w });
 const day = Object.values(w.AION_DAYS)[0].daily, byName = {}, RC = {}; day.players.forEach(p => { if (p.race === 0 || p.race === 1) RC[p.id] = p.race; }); day.players.forEach(p => { if (!(p.name in byName)) byName[p.name] = p.id; });
 // 控制类状态：按 aion_skills_cn.json 每个技能 Effects[].Type 归类（大小写不敏感；Buff* 是自身防护效果，不算）
@@ -34,6 +34,8 @@ for (const q of rows(base + 'x-deaths-0025.csv')) { const id = byName[q[2]]; if 
   const e = (o.d[t + '|' + lab] ||= [lab, 0, t, []]); e[1]++; if (ts) e[3].push(ts); }
 // NPC 盯住 0x0028
 for (const q of rows(base + 'x-npc-target-0028.csv')) { const id = byName[q[3]]; if (id === undefined) continue; const o = G(id); o.n ||= {}; o.n[q[1]] = (o.n[q[1]] || 0) + (+q[5] || 1); usedN.add(q[1]); }
+// 红药使用次数（tools/build-potions.js，战斗时段）
+try { if (potionsJson) for (const [nm, c] of Object.entries(JSON.parse(fs.readFileSync(potionsJson, 'utf8')))) { const id = byName[nm]; if (id !== undefined) G(id).pt = c; } } catch {}
 // 攻击结果 0x002B marker（PvP，按 SHA+记录 去重）：普通/暴击/招架/格挡/闪避/抵抗
 const RK = { 0x0A: [0], 0xCA: [1], 0x02: [2], 0xC2: [2, 1], 0x04: [3], 0xC4: [3, 1], 0x00: [4], 0x06: [5] };
 (async () => {
@@ -50,7 +52,7 @@ const RK = { 0x0A: [0], 0xCA: [1], 0x02: [2], 0xC2: [2, 1], 0x04: [3], 0xC4: [3,
     if (o.c) { x.c = [o.c[0], o.c[1], Object.entries(o.c[2]).sort((a, b) => b[1][0] - a[1][0]).slice(0, 12).map(([s, v]) => (used.add(+s), [+s, v[0], v[1]]))]; }
     if (o.ra) x.ra = o.ra; if (o.cc) x.cc = o.cc; if (o.rr) x.rr = o.rr; if (o.e) x.e = o.e;
     if (o.bf) x.bf = Object.values(o.bf).sort((a, b) => b[3] - a[3]).slice(0, 20).map(b => (used.add(b[0]), [b[0], b[1], b[2], b[3], top(b[4], 1).map(z => z[0])[0] || '']));
-    if (o.d) x.d = Object.values(o.d).sort((a, b) => b[1] - a[1]).slice(0, 30); if (o.n) x.n = top(o.n, 10);
+    if (o.pt) x.pt = o.pt; if (o.d) x.d = Object.values(o.d).sort((a, b) => b[1] - a[1]).slice(0, 30); if (o.n) x.n = top(o.n, 10);
     (out[id % 16] ||= {})[id] = x; }
   const dir = path.join(dataDir, 'px', date); fs.rmSync(dir, { recursive: true, force: true }); fs.mkdirSync(dir, { recursive: true });
   const names = {}; used.forEach(s => { if (SK[s]) names[s] = SK[s][0]; });

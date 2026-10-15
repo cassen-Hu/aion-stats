@@ -115,7 +115,8 @@ function Publish-Battles([string]$d, [string]$iso, [string]$base, [string]$hitsP
   $log = [AionBattleExtract]::Run($facts, @($frames | Where-Object { $_ }), (Join-Path $ReleaseDir 'npc-map-anchors.tsv'),
     (Join-Path $ReleaseDir 'mapbounds.tsv'), $DataDir, $iso, $TrackSampleSec, $hitsPath)
   $xb = "$base."; if (-not (Test-Path "$($xb)x-casts-0021.csv")) { $xb = Join-Path $ExtrasDir (Split-Path "$base." -Leaf) }
-  & node (Join-Path $Site 'tools\build-pextra.js') $DataDir $iso $xb $facts $SkillTable | ForEach-Object { Write-Host "  $_" }
+  $potOut = Join-Path $env:TEMP "aion-potions-$iso.json"; & node (Join-Path $Site 'tools\build-potions.js') $frames (Join-Path $DataDir "$iso.battles.json") (Join-Path $Site 'tools\potion-skills.txt') $potOut | ForEach-Object { Write-Host "  $_" }
+  & node (Join-Path $Site 'tools\build-pextra.js') $DataDir $iso $xb $facts $SkillTable $potOut | ForEach-Object { Write-Host "  $_" }
   $log -split "`n" | Where-Object { $_ -notmatch '^MAPS:' } | ForEach-Object { Write-Host "  $_" }
   if ($log -match 'SKIP_DAY:') {
     Write-Host "  跳过 $iso：没有参战人数 > 50 的战斗，不发布这一天。"
@@ -138,6 +139,9 @@ if (Test-Path $SkillTable) {
   # 治疗技能：技能表 Effects 里有 Heal 类（不含 MP/FP 回复）→ tools\heal-skills.txt（PvP治疗用）
   $hl = @(([IO.File]::ReadAllText($SkillTable) | ConvertFrom-Json) | Where-Object { @($_.Effects | Where-Object { "$($_.Type)" -match 'heal' -and "$($_.Type)" -notmatch 'mp|fp|dp' }).Count -gt 0 } | ForEach-Object { [string]$_.SkillId })
   [IO.File]::WriteAllLines((Join-Path $Site 'tools\heal-skills.txt'), [string[]]$hl)
+  # HP 药水（红药）效果：图标/内部名是药水、带 HP 回复效果；排除竞技场恢复球 10388（不是物品药水）→ tools\potion-skills.txt
+  $pl = @(([IO.File]::ReadAllText($SkillTable) | ConvertFrom-Json) | Where-Object { "$($_.Icon) $($_.InternalName)" -match '(?i)potion|remedy' -and $_.SkillId -ne 10388 -and @($_.Effects | Where-Object { "$($_.Type)" -match '^(?i)(Proc)?Heal(_Instant)?$' }).Count -gt 0 } | ForEach-Object { [string]$_.SkillId })
+  [IO.File]::WriteAllLines((Join-Path $Site 'tools\potion-skills.txt'), [string[]]$pl)
 } else { Write-Warning "找不到技能表 $SkillTable，技能名与回蓝过滤不可用" }
 # AOE 技能：skill_templates.xml 里 target_type="AREA"（与 Batch25 SkillData 的 AOE 判定相同，不用 MyAion 协议映射兜底）
 # $SkillXml 见参数

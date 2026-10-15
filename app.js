@@ -326,6 +326,7 @@
       h += sec('攻击结果与被控制', `<table class="kv"><tr><th class="t">PvP 技能</th>${L.map(l => `<th>${l}</th>`).join('')}</tr><tr><td class="t">打出</td>${r(x.ra)}</tr><tr><td class="t">受到</td>${r(x.rr)}</tr></table>
         <table class="kv"><tr><th class="t">被控制</th><th>击倒</th><th>麻痹</th><th>沉默</th><th>失明</th><th>晕厥</th></tr><tr><td class="t">次数</td>${[0, 1, 2, 3, 4].map(i => (x.cc || [])[i] || 0).map(n => `<td>${fmt(n)}</td>`).join('')}</tr></table>`, true); }
     if (x.bf) h += sec(`受到的增益/减益（${x.bf.length}）`, `<div class="pf-scroll"><table class="kv"><tr><th class="t">效果</th><th>类型</th><th>槽位</th><th>次数</th><th class="t">主要来源</th></tr>${x.bf.map(b => `<tr><td class="t">${sic(b[0])}${skn(b[0], d)}</td><td class="${b[2] === 2 ? 'dead' : ''}">${['-', '增益', '减益'][b[2]]}</td><td>${b[1]}</td><td>${fmt(b[3])}</td><td class="t">${esc(b[4])}</td></tr>`).join('')}</table></div>`);
+    h += `<p class="note" style="margin:4px 0">红药（HP 药水）使用：<b>${fmt(x.pt || 0)}</b> 次（>50 人战斗时段）</p>`;
     if (x.e) h += sec(`外观装备（${x.e.length}）`, `<div class="pf-chips">${x.e.map(i => { const nm = ((((window.AION_PXN || {})[d] || {})._i) || {})[i]; return `<span title="物品ID ${i}">${esc(nm || String(i))}</span>`; }).join('')}</div>`);
     if (x.n) h += sec(`被 NPC 盯住（${x.n.length}）`, `<table class="kv"><tr><th class="t">NPC</th><th>次数</th></tr>${x.n.map(k => `<tr><td class="t" title="模板 ${esc(k[0])}">${npcn(k[0], d)}</td><td>${fmt(k[1])}</td></tr>`).join('')}</table>`);
     return h;
