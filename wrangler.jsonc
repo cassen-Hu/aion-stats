@@ -1,1 +1,1 @@
-{ "name": "aion-stats", "compatibility_date": "2026-10-01", "assets": { "directory": "./" } }
+{ "name": "aion-stats", "compatibility_date": "2026-10-01", "workers_dev": true, "preview_urls": true, "assets": { "directory": "./" } }
