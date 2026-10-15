@@ -1,0 +1,6 @@
+tools/
+publish-daily.ps1
+README.md
+.gitignore
+wrangler.jsonc
+.git/

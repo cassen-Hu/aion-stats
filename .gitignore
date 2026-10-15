@@ -5,3 +5,5 @@ tools/obj/
 *.tmp
 *.log
 Thumbs.db
+node_modules/
+.wrangler/
