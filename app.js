@@ -236,14 +236,14 @@
 
   // —— 玩家资料卡（点名字打开；技能/击杀和跨日索引按需加载）——
   async function getProf(d) { if (!(window.AION_PROF && window.AION_PROF[d])) await loadScript(`data/prof/${d}.js`); return window.AION_PROF[d]; }
-  async function getSk(d, id) { const n = id % 16; if (!(window.AION_SK && window.AION_SK[d] && window.AION_SK[d][n])) await loadScript(`data/sk/${d}/${n}.js`); return window.AION_SK[d][n][id] || []; }
+  async function getSk(d, id) { if (!window.AION_SKILLNAMES) { try { await loadScript('data/skillnames.js'); } catch {} } const n = id % 16; if (!(window.AION_SK && window.AION_SK[d] && window.AION_SK[d][n])) await loadScript(`data/sk/${d}/${n}.js`); return window.AION_SK[d][n][id] || []; }
   // 技能表（单独函数，方便以后换皮）：[技能, PvP, PvE, PvP命中, PvE命中, 可判暴击, 暴击, 最大]
   function skillTable(sk) {
     if (!sk.length) return '<p class="note">无</p>';
     const pct = (a, b) => b ? (100 * a / b).toFixed(1) + '%' : '-';
     return `<div class="pf-scroll"><table class="kv pf-skills"><tr><th class="t">技能</th><th>总伤害</th><th>PvP</th><th>PvE</th><th>命中</th><th>暴击率</th><th>平均</th><th>最大</th></tr>${sk.map(s => { const tot = s[1] + s[2], n = s[3] + s[4];
-      return `<tr><td class="t">${s[0] === 0 ? '普攻' : '#' + s[0]}</td><td>${fmt(tot)}</td><td>${fmt(s[1])}</td><td>${fmt(s[2])}</td><td>${fmt(n)}</td><td>${s[0] === 0 ? '-' : pct(s[6], s[5])}</td><td>${fmt(n ? Math.round(tot / n) : 0)}</td><td>${fmt(s[7])}</td></tr>`; }).join('')}</table></div>
-      <p class="note">共 ${sk.length} 个技能，来自统一账本去重后的命中。技能名没有可靠对照表，只显示协议技能编号。暴击率 = marker 0xCA00/0xC200 占比；普攻不判暴击。</p>`;
+      return `<tr><td class="t" title="技能ID ${s[0]}">${s[0] === 0 ? '普攻' : esc((window.AION_SKILLNAMES || {})[s[0]] || '#' + s[0])}</td><td>${fmt(tot)}</td><td>${fmt(s[1])}</td><td>${fmt(s[2])}</td><td>${fmt(n)}</td><td>${s[0] === 0 ? '-' : pct(s[6], s[5])}</td><td>${fmt(n ? Math.round(tot / n) : 0)}</td><td>${fmt(s[7])}</td></tr>`; }).join('')}</table></div>
+      <p class="note">共 ${sk.length} 个技能，来自统一账本去重后的命中。技能名来自客户端技能表 aion_skills_cn.json（鼠标悬停看技能ID）。暴击率 = marker 0xCA00/0xC200 占比；普攻不判暴击。</p>`;
   }
   async function getPlayers() { if (!window.AION_PLAYERS) await loadScript('data/players.js'); return window.AION_PLAYERS; }
   async function openProfile(id) {
