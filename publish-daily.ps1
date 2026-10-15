@@ -11,6 +11,7 @@ param(
   [string]$Date,
   [switch]$All,
   [switch]$NoPush,
+  [ValidateSet('s1', 's2', 's4', 's5', 's6')][string]$Server = 's1',   # 区服：s1 一区 亚特雷亚 / s2 二区 要塞盘龙 / s4 四区 命运回转 / s5 五区 荣耀再临 / s6 六区 破晓之光
   [string]$EvidenceDir = 'C:\Users\Cassen\Documents\AionS2-Isolated-20261015-Batch25\Evidence',
   [string]$Prefix = 'B25-PL-import-real-',
   [string]$ReleaseDir = 'C:\Users\Cassen\Documents\AionS2-Isolated-20261015-Batch25\Release',
@@ -24,8 +25,9 @@ param(
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [Text.Encoding]::UTF8
 $Site = $PSScriptRoot
-$DataDir = Join-Path $Site 'data'
-if (-not (Test-Path $DataDir)) { New-Item -ItemType Directory $DataDir | Out-Null }
+$DataDir = Join-Path $Site "data\$Server"
+if (-not (Test-Path $DataDir)) { New-Item -ItemType Directory $DataDir -Force | Out-Null }
+Write-Host "区服 $Server → $DataDir"
 $Utf8 = New-Object System.Text.UTF8Encoding($false)
 
 function Get-AvailableDates {
@@ -54,6 +56,10 @@ function Publish-One([string]$d) {
     $players += [ordered]@{ id = $k; name = $g.名字; legion = ''; race = $(if ($g.阵营 -eq '天') { 0 } elseif ($g.阵营 -eq '魔') { 1 } else { -1 }); classId = 0
       sources = 0; pvpSkill = (L $g.PvP技能); pvpAuto = (L $g.PvP普攻); pveSkill = (L $g.PvE技能); pveAuto = (L $g.PvE普攻) } }
   # 军团 = 同军团同阵营玩家（新口径）求和；人数 = 有伤害的成员
+  # 阵营主来源：服务端 0x0020 PlayerInfo race@37（0=天族 1=魔族），全天抓包扫出的 tools\packet-race.tsv；没有该包的玩家才沿用名单
+  $pr = @{}; $prf = Join-Path $Site 'tools\packet-race.tsv'
+  if (Test-Path $prf) { foreach ($l in [IO.File]::ReadAllLines($prf, $Utf8)) { $q = $l.Split("`t"); if ($q.Length -eq 2) { $pr[$q[0]] = [long]$q[1] } } }
+  foreach ($p in $players) { if ($pr.ContainsKey($p.name)) { $p.race = $pr[$p.name] } }
   $legions = @($players | Where-Object { $_.legion } | Group-Object { "$($_.legion)|$($_.race)" } | ForEach-Object {
     $m = $_.Group; $dm = @($m | Where-Object { $_.pvpSkill + $_.pvpAuto + $_.pveSkill + $_.pveAuto -gt 0 })
     [ordered]@{ legion = $m[0].legion; race = $m[0].race; members = $dm.Count
@@ -94,6 +100,7 @@ function Publish-Battles([string]$d, [string]$iso, [string]$base, [string]$hitsP
   Get-ChildItem $DataDir -Filter '????-??-??.json' | Where-Object { $_.BaseName -ne $iso } | ForEach-Object {
     ([IO.File]::ReadAllText($_.FullName, $Utf8) | ConvertFrom-Json).players | Where-Object { $_.race -in 0, 1 } | ForEach-Object { $rl.Add("$($_.name)`t$($_.race)") } }
   if (Test-Path "$base.s2-players.csv") { Import-Csv "$base.s2-players.csv" -Encoding UTF8 | Where-Object { $_.Race -in '0', '1' } | ForEach-Object { $rl.Add("$($_.Name)`t$($_.Race)") } }
+  $prf2 = Join-Path $Site 'tools\packet-race.tsv'; if (Test-Path $prf2) { foreach ($l in [IO.File]::ReadAllLines($prf2, $Utf8)) { if ($l) { $rl.Add($l) } } }   # 0x0020 包阵营最后写入＝优先
   [IO.File]::WriteAllLines((Join-Path $Site 'tools\day-race.tsv'), $rl, $Utf8)
   $log = [AionBattleExtract]::Run($facts, @($frames | Where-Object { $_ }), (Join-Path $ReleaseDir 'npc-map-anchors.tsv'),
     (Join-Path $ReleaseDir 'mapbounds.tsv'), $DataDir, $iso, $TrackSampleSec, $hitsPath)

@@ -11,6 +11,7 @@
   const tz = { timeZone: 'Asia/Shanghai', hour12: false };
   const hm = iso => new Date(iso).toLocaleTimeString('zh-CN', { ...tz, hour: '2-digit', minute: '2-digit' });
   const mmss = s => { s = Math.max(0, Math.floor(s)); const m = Math.floor(s / 60); return String(m).padStart(2, '0') + ':' + String(s % 60).padStart(2, '0'); };
+  const SRV = window.AION_SRV || 's1', DP = `data/${SRV}/`;
   const D = window.AION_DATA || { index: [], maps: {} };
   const MAPS = D.maps || {};
   let data = null, battles = [], byId = {}, limit = 100, curBattle = -1;
@@ -23,11 +24,11 @@
       s.onload = ok; s.onerror = () => { delete loaded[src]; no(new Error('加载失败 ' + src)); }; document.head.appendChild(s); });
   }
   async function getDay(d) {
-    if (!(window.AION_DAYS && window.AION_DAYS[d])) await loadScript(`data/day/${d}.js`);
+    if (!(window.AION_DAYS && window.AION_DAYS[d])) await loadScript(`${DP}day/${d}.js`);
     return window.AION_DAYS[d];
   }
   async function getTracks(key) {
-    if (!(window.AION_TRACKS && window.AION_TRACKS[key])) await loadScript(`data/tracks/${key}.js`);
+    if (!(window.AION_TRACKS && window.AION_TRACKS[key])) await loadScript(`${DP}tracks/${key}.js`);
     return window.AION_TRACKS[key];
   }
 
@@ -280,8 +281,8 @@
       return `<div class="tf-col"><h2 class="sec r${r}">${r === 0 ? '天族' : '魔族'}变身玩家（${L.length}）</h2><div class="tw"><table><thead><tr><th class="t">#</th><th class="t">玩家 ／ 等级 · 职业 · 军团</th><th class="t">军阶称谓</th><th>击杀</th><th>阵亡</th><th>PvP伤害</th><th>PvP受到</th><th>治疗</th></tr></thead><tbody>${L.map((p, i) => `<tr><td class="t rk">${i + 1}</td><td class="t"><b class="pn r${r}" data-id="${p.id}">${esc(p.name)}</b><div class="pf-sl">${p.lv ? 'Lv' + p.lv + ' · ' : ''}${cls(p.classId)}${p.legion ? ' · <span class="ln" data-lg="' + esc(p.legion) + '" data-r="' + r + '">' + esc(p.legion) + '</span>' : ''}</div></td><td class="t">${RANKS[p.rank]}</td><td>${p.kills}</td><td>${p.deaths}</td><td>${fmt(p.pvp)}</td><td>${fmt(p.taken)}</td><td>${fmt(p.heal)}</td></tr>`).join('') || '<tr><td colspan="8" class="t note">无</td></tr>'}</tbody></table></div></div>`; }).join('');
   }
   // —— 玩家资料卡（点名字打开；技能/击杀和跨日索引按需加载）——
-  async function getProf(d) { if (!(window.AION_PROF && window.AION_PROF[d])) await loadScript(`data/prof/${d}.js`); return window.AION_PROF[d]; }
-  async function getSk(d, id) { if (!window.AION_SKILLNAMES) { try { await loadScript('data/skillnames.js'); } catch {} } const n = id % 16; if (!(window.AION_SK && window.AION_SK[d] && window.AION_SK[d][n])) await loadScript(`data/sk/${d}/${n}.js`); return window.AION_SK[d][n][id] || []; }
+  async function getProf(d) { if (!(window.AION_PROF && window.AION_PROF[d])) await loadScript(`${DP}prof/${d}.js`); return window.AION_PROF[d]; }
+  async function getSk(d, id) { if (!window.AION_SKILLNAMES) { try { await loadScript(DP + 'skillnames.js'); } catch {} } const n = id % 16; if (!(window.AION_SK && window.AION_SK[d] && window.AION_SK[d][n])) await loadScript(`${DP}sk/${d}/${n}.js`); return window.AION_SK[d][n][id] || []; }
   // 技能表（单独函数，方便以后换皮）：[技能, PvP, PvE, PvP命中, PvE命中, 可判暴击, 暴击, 最大]
   function skillTable(sk) {
     if (!sk.length) return '<p class="note">无</p>';
@@ -289,7 +290,7 @@
     return `<div class="pf-scroll"><table class="kv pf-skills"><tr><th class="t">技能</th><th>总伤害</th><th>PvP</th><th>PvE</th><th>命中</th><th>暴击率</th><th>平均</th><th>最大</th></tr>${sk.map(s => { const tot = s[1] + s[2], n = s[3] + s[4];
       return `<tr><td class="t" title="技能ID ${s[0]}">${s[0] === 0 ? '普攻' : esc((window.AION_SKILLNAMES || {})[s[0]] || '#' + s[0])}</td><td>${fmt(tot)}</td><td>${fmt(s[1])}</td><td>${fmt(s[2])}</td><td>${fmt(n)}</td><td>${s[0] === 0 ? '-' : pct(s[6], s[5])}</td><td>${fmt(n ? Math.round(tot / n) : 0)}</td><td>${fmt(s[7])}</td></tr>`; }).join('')}</table></div>`;
   }
-  async function getRel(d, id) { const n = id % 16; if (!(window.AION_REL && window.AION_REL[d] && window.AION_REL[d][n])) await loadScript(`data/rel/${d}/${n}.js`); return window.AION_REL[d][n][id] || {}; }
+  async function getRel(d, id) { const n = id % 16; if (!(window.AION_REL && window.AION_REL[d] && window.AION_REL[d][n])) await loadScript(`${DP}rel/${d}/${n}.js`); return window.AION_REL[d][n][id] || {}; }
   // 关系列表（组件）：rows=[[id,值,次数]] 或击杀 [[名字,id,[时间...]]]
   const pnm = (id, nm) => { const q = byId[id]; return q ? `<b class="pn r${q.race}" data-id="${id}">${esc(q.name)}</b>` : esc(nm || ('#' + id)); };
   function relTable(title, rows, cols) {
@@ -301,7 +302,7 @@
     return `<h4>${title}（${rows.reduce((s, r) => s + r[2].length, 0)}）</h4><div class="pf-scroll pf-rel"><table class="kv"><tr><th class="t">玩家</th><th>次数</th><th class="t">时间</th></tr>${rows.map(r => `<tr><td class="t">${r[1] ? pnm(r[1], r[0]) : esc(r[0])}</td><td>${r[2].length}</td><td class="t tm">${r[2].map(s => hms(s)).join(' ')}</td></tr>`).join('')}</table></div>`;
   }
   const hms = s => new Date(s * 1000).toLocaleTimeString('zh-CN', { ...tz, hour: '2-digit', minute: '2-digit', second: '2-digit' });
-  async function getPlayers() { if (!window.AION_PLAYERS) await loadScript('data/players.js'); return window.AION_PLAYERS; }
+  async function getPlayers() { if (!window.AION_PLAYERS) await loadScript(DP + 'players.js'); return window.AION_PLAYERS; }
   async function openProfile(id) {
     const p = byId[id]; if (!p) return;
     let box = $('#prof'); if (!box) { document.body.insertAdjacentHTML('beforeend', '<div id="prof" class="pmask"><div class="pbox"></div></div>'); box = $('#prof'); box.onclick = e => { if (e.target === box || e.target.classList.contains('px')) box.style.display = 'none'; }; }
@@ -345,16 +346,17 @@
     limit = 100; curBattle = -1; SB.tr = null; fillSandboxSelect(); render();
     if ($('#sandbox').classList.contains('on') && battles.length) openSandbox(0); else draw();
     
-    history.replaceState(null, '', '#' + d);
+    history.replaceState(null, '', '#' + SRV + '/' + d);
   }
   ['#q', '#race', '#cls'].forEach(s => $(s).addEventListener('input', () => { limit = 100; render(); }));
   const fail = err => $('#summary').innerHTML = `<div class="card">${esc(err.message)}</div>`;
   $('#date').onchange = e => load(e.target.value).catch(fail);
   const dates = D.index || [];
   $('#date').innerHTML = dates.map(d => `<option>${d}</option>`).join('');
-  const want = location.hash.slice(1).split('/')[0], wantTab = location.hash.split('/')[1], wantIdx = location.hash.split('/')[2];
+  const hp = location.hash.slice(1).split('/'); if (/^s\d$/.test(hp[0])) hp.shift();
+  const want = hp[0], wantTab = hp[1], wantIdx = hp[2];
   if (dates.includes(want)) $('#date').value = want;
   if (dates.length) load($('#date').value).then(() => { if (wantIdx !== undefined && battles[+wantIdx]) { curBattle = +wantIdx; $('#sbBattle').value = wantIdx; renderBattleList(); renderBattleDetail(curBattle); if (wantTab === 'sandbox') openSandbox(curBattle); }
     if (wantTab) showTab(wantTab); }).catch(fail);
-  else $('#summary').innerHTML = '<div class="card">暂无数据（先运行 publish-daily.ps1）</div>';
+  else $('#summary').innerHTML = '<div class="card">暂无数据</div>';
 })();

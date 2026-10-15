@@ -15,6 +15,7 @@
 <header>
   <h1><picture><source srcset="img/logo-128.webp" type="image/webp"><img class="logo" src="img/logo-128.png" width="40" height="40" alt="草"></picture><span>永恒之塔 战斗数据日报</span></h1>
   <div class="controls">
+    <label>区服 <select id="srv"></select></label>
     <label>日期 <select id="date"></select></label>
     <label>阵营 <select id="race"><option value="">全部</option><option value="0">天族</option><option value="1">魔族</option></select></label>
     <label>职业 <select id="cls"><option value="">全部</option></select></label>
@@ -86,7 +87,7 @@
 <li>若本站内容有可交流、优化的地方，欢迎技术友好沟通指正。</li>
 </ol>
 </div></div>
-<script>(function(){var m=document.getElementById('about');document.getElementById('aboutBtn').onclick=function(){m.style.display='flex'};m.onclick=function(e){if(e.target===m||e.target.classList.contains('px'))m.style.display='none'};document.addEventListener('keydown',function(e){if(e.key==='Escape')m.style.display='none'})})();</script><script src="data/bundle.js"></script>
+<script>(function(){var m=document.getElementById('about');document.getElementById('aboutBtn').onclick=function(){m.style.display='flex'};m.onclick=function(e){if(e.target===m||e.target.classList.contains('px'))m.style.display='none'};document.addEventListener('keydown',function(e){if(e.key==='Escape')m.style.display='none'})})();</script><script>(function(){var S=[['s1','一区 亚特雷亚'],['s2','二区 要塞盘龙'],['s4','四区 命运回转'],['s5','五区 荣耀再临'],['s6','六区 破晓之光']];var m=/^#(s\d)(\/|$)/.exec(location.hash),v=m&&S.some(function(x){return x[0]===m[1]})?m[1]:'s1';window.AION_SRV=v;var el=document.getElementById('srv');el.innerHTML=S.map(function(x){return '<option value="'+x[0]+'"'+(x[0]===v?' selected':'')+'>'+x[1]+'</option>'}).join('');el.onchange=function(){location.hash='#'+el.value;location.reload()};document.write('<script src="data/'+v+'/bundle.js" onerror="window.AION_DATA={index:[],maps:{}}"><\/script>')})();</script>
 <script src="app.js"></script>
 </body>
 </html>

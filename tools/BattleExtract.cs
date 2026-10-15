@@ -12,6 +12,8 @@ using System.Text.Json;
 
 public static class AionBattleExtract
 {
+    // data\<server> → 站点根目录（向上找到含 tools 的目录）
+    static string SiteRoot(string outDir) { var d = Path.GetDirectoryName(Path.GetFullPath(outDir))!; while (d != null && !Directory.Exists(Path.Combine(d, "tools"))) d = Path.GetDirectoryName(d); return d ?? Path.GetDirectoryName(outDir)!; }
     sealed class Kill { public DateTime T; public string K = "", V = ""; public int VR = -1, KR = -1; }
     sealed class Hit { public DateTime T; public int A, Tg, Sk, Mk = -1; public long Amt; public bool Auto; }
     sealed class Battle
@@ -49,7 +51,7 @@ public static class AionBattleExtract
         var hits = new List<Hit>(); var kills = new List<Kill>();
         var seen = new HashSet<(int, int, long, long, long)>();
         var heals = new List<Hit>(); var hseen = new HashSet<(int, int, long, long, long)>();
-        var mpSkills = new HashSet<int>(); var mpf = Path.Combine(Path.GetDirectoryName(outDir)!, "tools", "mp-skills.txt");
+        var mpSkills = new HashSet<int>(); var mpf = Path.Combine(SiteRoot(outDir), "tools", "mp-skills.txt");
         if (File.Exists(mpf)) foreach (var l in File.ReadLines(mpf)) if (int.TryParse(l.Trim(), out var mi)) mpSkills.Add(mi);
         DateTime first = DateTime.MaxValue, last = DateTime.MinValue;
         using (var sr = new StreamReader(factsPath, Encoding.UTF8))
@@ -235,7 +237,7 @@ public static class AionBattleExtract
             foreach (var l in File.ReadLines(boundsPath)) { if (l.Length == 0 || l[0] == '#') continue; var p = l.Split('\t'); if (p.Length >= 5) bounds[p[0].ToLowerInvariant()] = p.Skip(1).Take(4).Select(v => double.Parse(v, CultureInfo.InvariantCulture)).ToArray(); }
         // 阵亡者/击杀者阵营：① 身份帧 0x0020 race@37（同名多阵营冲突则弃用）② 当天 facts 里的玩家阵营（B25 名单，经 racePath 传入）③ PvP 击杀：击杀者阵营已知 → 阵亡者为对方阵营
         var dayRace = new Dictionary<string, int>();
-        var rp = Path.Combine(Path.GetDirectoryName(outDir)!, "tools", "day-race.tsv");
+        var rp = Path.Combine(SiteRoot(outDir), "tools", "day-race.tsv");
         if (File.Exists(rp)) foreach (var l in File.ReadLines(rp)) { var q = l.Split('\t'); if (q.Length == 2 && int.TryParse(q[1], out var rr) && rr is 0 or 1) dayRace[q[0]] = rr; }
         int RaceOf(string n) { if (identRace.TryGetValue(n, out var r) && r >= 0) return r; if (dayRace.TryGetValue(n, out var r2)) return r2; return -1; }
         int vByIdent = 0, vByOpp = 0, vUnk = 0, chk = 0, ok = 0, same = 0;
@@ -314,7 +316,7 @@ public static class AionBattleExtract
         var kd = new Dictionary<string, int[]>();
         foreach (var k in dk) { (kd.TryGetValue(k.K, out var a) ? a : kd[k.K] = new int[2])[0]++; (kd.TryGetValue(k.V, out var b2) ? b2 : kd[k.V] = new int[2])[1]++; }
         Directory.CreateDirectory(Path.Combine(outDir, "prof"));
-        var aoe = new HashSet<int>(); var aof = Path.Combine(Path.GetDirectoryName(outDir)!, "tools", "aoe-skills.txt");
+        var aoe = new HashSet<int>(); var aof = Path.Combine(SiteRoot(outDir), "tools", "aoe-skills.txt");
         if (File.Exists(aof)) foreach (var l in File.ReadLines(aof)) if (int.TryParse(l.Trim(), out var ai)) aoe.Add(ai);
         var pst = new Dictionary<int, long[]>();   // [PvP受到, 治疗量, AOE PvP伤害]
         long[] S(int id) { if (!pst.TryGetValue(id, out var v)) pst[id] = v = new long[3]; return v; }
