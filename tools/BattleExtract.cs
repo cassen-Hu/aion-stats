@@ -70,7 +70,7 @@ public static class AionBattleExtract
                 if (ap > 0 && ao != 0) oidToPerson[(sess, ao)] = ap; if (ap > 0 && f[cAn].Length > 0) pname[ap] = f[cAn]; if (tp > 0 && f[cTn].Length > 0) pname[tp] = f[cTn];
                 if (tp > 0 && to != 0) oidToPerson[(sess, to)] = tp;
                 int fc = Int(f[cF]);
-                if (f[cK].Length > 0 && f[cV].Length > 0) { kills.Add(new Kill { T = t, K = f[cK], V = f[cV] }); continue; }
+                if (f[cK].Length > 0 && f[cV].Length > 0) { if (f[cK] == f[cV]) continue; /* 自杀不算 PvP 击杀 */ kills.Add(new Kill { T = t, K = f[cK], V = f[cV] }); continue; }
                 // 治疗：class 4 + marker 0x0AFF 的负值记录（技能均为治疗类，见报告）；去掉自疗与回蓝类技能
                 if (fc == 4 && ap > 0 && tp > 0 && ap != tp && cMk >= 0 && Hex(f[cMk]) == 0x0AFF)
                 {
@@ -105,6 +105,16 @@ public static class AionBattleExtract
                     A = Int(p[1]), Tg = p[6] == "1" ? Int(p[2]) : 0, Sk = Int(p[3]), Amt = long.Parse(p[4]), Auto = p[5] == "1", Mk = p.Length > 7 ? Convert.ToInt32(p[7], 16) : -1 });
             }
             log.AppendLine($"伤害口径：统一账本 {Path.GetFileName(hitsPath)}，{hits.Count} 击");
+        }
+        // 同阵营不能互相攻击：同阵营命中/击杀只可能是切磋（决斗）或数据错误，一律不算 PvP（阵营表 tools/day-race.tsv，后写入优先＝0x0020 包）
+        {
+            var sfRaceTbl = new Dictionary<string, int>(); var sfRaceFile = Path.Combine(SiteRoot(outDir), "tools", "day-race.tsv");
+            if (File.Exists(sfRaceFile)) foreach (var sfl in File.ReadLines(sfRaceFile, Encoding.UTF8)) { var sfq = sfl.Split('\t'); if (sfq.Length == 2 && int.TryParse(sfq[1], out var sfrr) && (sfrr == 0 || sfrr == 1)) sfRaceTbl[sfq[0]] = sfrr; }
+            int SfRaceOf(int id) => pname.TryGetValue(id, out var sfnm) && sfRaceTbl.TryGetValue(sfnm, out var sfr) ? sfr : -1;
+            long sfAmt = 0; int sfN = 0;
+            hits.RemoveAll(h => { if (h.Tg <= 0 || h.A == h.Tg) return false; int sfa = SfRaceOf(h.A); if (sfa < 0 || sfa != SfRaceOf(h.Tg)) return false; sfAmt += h.Amt; sfN++; return true; });
+            int sfK = kills.RemoveAll(k => k.K == k.V || (sfRaceTbl.TryGetValue(k.K, out var sfk1) && sfRaceTbl.TryGetValue(k.V, out var sfk2) && sfk1 == sfk2));
+            log.AppendLine($"同阵营（切磋/错误）排除：命中 {sfN} 次 {sfAmt} 伤害，击杀消息 {sfK} 条");
         }
         // 击杀去重：同一击杀者+阵亡者 4 秒内只算一次（与程序 KillDedupWindow 一致）
         kills.Sort((a, b) => a.T.CompareTo(b.T));

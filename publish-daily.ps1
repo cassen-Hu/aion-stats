@@ -62,6 +62,15 @@ function Publish-One([string]$d) {
   $pr = @{}; $prf = Join-Path $Site 'tools\packet-race.tsv'
   if (Test-Path $prf) { foreach ($l in [IO.File]::ReadAllLines($prf, $Utf8)) { $q = $l.Split("`t"); if ($q.Length -eq 2) { $pr[$q[0]] = [long]$q[1] } } }
   foreach ($p in $players) { if ($pr.ContainsKey($p.name)) { $p.race = $pr[$p.name] } }
+  # 同阵营不能互相攻击：账本命中里攻击者与目标同阵营的（切磋/错误）从 PvP 里扣掉，不计入任何伤害
+  $hp = "$lbase.x-ledger-hits.csv"; $rid = @{}; foreach ($p in $players) { if ($p.race -in 0, 1) { $rid[[long]$p.id] = $p.race } }; $byId = @{}; foreach ($p in $players) { $byId[[long]$p.id] = $p }
+  $sfTot = 0L; $pvpBefore = [long]($players | ForEach-Object { $_.pvpSkill + $_.pvpAuto } | Measure-Object -Sum).Sum
+  if (Test-Path $hp) { foreach ($l in [IO.File]::ReadLines($hp) | Select-Object -Skip 1) { $q = $l.Split(','); if ($q.Length -lt 7 -or $q[6] -ne '1') { continue }
+      $a = [long]$q[1]; $t = [long]$q[2]; if ($a -eq $t -or -not $rid.ContainsKey($a) -or -not $rid.ContainsKey($t) -or $rid[$a] -ne $rid[$t]) { continue }
+      $m = [long]$q[4]; $sfTot += $m; $pp = $byId[$a]; if ($q[5] -eq '1') { $pp.pvpAuto -= $m } else { $pp.pvpSkill -= $m } } }
+  foreach ($p in $players) { if ($p.pvpAuto -lt 0) { $p.pvpAuto = 0 }; if ($p.pvpSkill -lt 0) { $p.pvpSkill = 0 } }
+  $pvpAfter = [long]($players | ForEach-Object { $_.pvpSkill + $_.pvpAuto } | Measure-Object -Sum).Sum
+  Write-Host "PVPFIX $d PvP 合计 $pvpBefore → $pvpAfter（同阵营排除 $sfTot）"
   $legions = @($players | Where-Object { $_.legion } | Group-Object { "$($_.legion)|$($_.race)" } | ForEach-Object {
     $m = $_.Group; $dm = @($m | Where-Object { $_.pvpSkill + $_.pvpAuto + $_.pveSkill + $_.pveAuto -gt 0 })
     [ordered]@{ legion = $m[0].legion; race = $m[0].race; members = $dm.Count

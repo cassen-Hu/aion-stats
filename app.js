@@ -307,6 +307,14 @@
     return window.AION_PX[d][n][id] || {}; }
   const sic = id => window.AION_SKICON && window.AION_SKICON.has(+id) ? `<img class="si" src="img/sk/${id}.png" width="20" height="20" loading="lazy" alt="">` : '';
   const skn = (id, d) => esc((window.AION_SKILLNAMES || {})[id] || ((window.AION_PXN || {})[d] || {})[id] || '#' + id);
+  const npcn = (id, d) => { const nm = ((((window.AION_PXN || {})[d] || {})._n) || {})[id]; return nm ? esc(nm) : 'NPC ' + esc(id); };
+  // 阵亡（合并）：PvP 击杀者来自击杀消息 rl.kb；自杀/环境/NPC 来自 0x0025（不计入 PvP 击杀）
+  function deathTable(kb, xd, d) {
+    const rows = (kb || []).map(r => [r[1] ? pnm(r[1], r[0]) : esc(r[0]), r[2]]);
+    (xd || []).filter(k => k[2] !== 'p').forEach(k => rows.push([k[2] === 'n' ? npcn(k[0].slice(1), d) + ' <span class="note">NPC</span>' : `<span class="dead">${esc(k[0])}</span>`, k[3] || []]));
+    if (!rows.length) return '<h4>阵亡</h4><p class="note">无</p>';
+    return `<h4>阵亡（${rows.reduce((s, r) => s + r[1].length, 0)}）</h4><div class="pf-scroll pf-rel"><table class="kv"><tr><th class="t">击杀者</th><th>次数</th><th class="t">时间</th></tr>${rows.map(r => `<tr><td class="t">${r[0]}</td><td>${r[1].length}</td><td class="t tm">${r[1].map(s => hms(s)).join(' ')}</td></tr>`).join('')}</table></div>`;
+  }
   function pxHtml(x, d) {
     const sec = (t, body, open) => `<details class="pxs"${open ? ' open' : ''}><summary>${t}</summary>${body}</details>`;
     let h = '';
@@ -315,9 +323,8 @@
       h += sec('攻击结果与被控制', `<table class="kv"><tr><th class="t">PvP 技能</th>${L.map(l => `<th>${l}</th>`).join('')}</tr><tr><td class="t">打出</td>${r(x.ra)}</tr><tr><td class="t">受到</td>${r(x.rr)}</tr></table>
         <table class="kv"><tr><th class="t">被控制</th><th>击倒</th><th>麻痹</th><th>沉默</th><th>失明</th><th>晕厥</th></tr><tr><td class="t">次数</td>${[0, 1, 2, 3, 4].map(i => (x.cc || [])[i] || 0).map(n => `<td>${fmt(n)}</td>`).join('')}</tr></table>`, true); }
     if (x.bf) h += sec(`受到的增益/减益（${x.bf.length}）`, `<div class="pf-scroll"><table class="kv"><tr><th class="t">效果</th><th>类型</th><th>槽位</th><th>次数</th><th class="t">主要来源</th></tr>${x.bf.map(b => `<tr><td class="t">${sic(b[0])}${skn(b[0], d)}</td><td class="${b[2] === 2 ? 'dead' : ''}">${['-', '增益', '减益'][b[2]]}</td><td>${b[1]}</td><td>${fmt(b[3])}</td><td class="t">${esc(b[4])}</td></tr>`).join('')}</table></div>`);
-    if (x.e) h += sec(`外观装备（${x.e.length}）`, `<div class="pf-chips">${x.e.map(i => `<span>${i}</span>`).join('')}</div>`);
-    if (x.d) h += sec(`阵亡记录（${x.d.reduce((s, k) => s + k[1], 0)}）`, `<table class="kv"><tr><th class="t">击杀者</th><th>次数</th></tr>${x.d.map(k => `<tr><td class="t">${byName[k[0]] !== undefined ? pnm(byName[k[0]], k[0]) : esc(k[0])}</td><td>${k[1]}</td></tr>`).join('')}</table>`);
-    if (x.n) h += sec(`被 NPC 盯住（${x.n.length}）`, `<table class="kv"><tr><th class="t">NPC 模板</th><th>次数</th></tr>${x.n.map(k => `<tr><td class="t">${esc(k[0])}</td><td>${fmt(k[1])}</td></tr>`).join('')}</table>`);
+    if (x.e) h += sec(`外观装备（${x.e.length}）`, `<div class="pf-chips">${x.e.map(i => { const nm = ((((window.AION_PXN || {})[d] || {})._i) || {})[i]; return `<span title="物品ID ${i}">${esc(nm || String(i))}</span>`; }).join('')}</div>`);
+    if (x.n) h += sec(`被 NPC 盯住（${x.n.length}）`, `<table class="kv"><tr><th class="t">NPC</th><th>次数</th></tr>${x.n.map(k => `<tr><td class="t" title="模板 ${esc(k[0])}">${npcn(k[0], d)}</td><td>${fmt(k[1])}</td></tr>`).join('')}</table>`);
     return h;
   }
   let byName = {};
@@ -347,7 +354,7 @@
       <h4>使用的技能</h4>${skillTable(sk)}
       ${pxHtml(px, data.date)}
       ${relTable('攻击了谁（PvP）', rl.a, ['伤害', '命中'])}${relTable('被谁攻击（PvP）', rl.b, ['伤害', '命中'])}
-      ${killTable('击杀了谁', rl.k)}${killTable('被谁击杀', rl.kb)}${relTable('被谁治疗', rl.h, ['治疗量', '次数'])}${revTable('复活了谁', rl.rv)}${revTable('被谁复活', rl.rb)}
+      ${killTable('击杀了谁', rl.k)}${deathTable(rl.kb, px.d, data.date)}${relTable('被谁治疗', rl.h, ['治疗量', '次数'])}${revTable('复活了谁', rl.rv)}${revTable('被谁复活', rl.rb)}
       <h4>出现过的日期（${days.length}）</h4>${days.length ? `<table class="kv"><tr><th class="t">日期</th><th>PvP</th><th>PvE</th></tr>${days.map(x => `<tr><td class="t"><a href="#" data-d="${x[0]}" data-id="${x[1]}">${x[0]}</a></td><td>${fmt(x[2])}</td><td>${fmt(x[3])}</td></tr>`).join('')}</table>` : '<p class="note">-</p>'}`;
     inner.querySelectorAll('a[data-b]').forEach(a => a.onclick = e => { e.preventDefault(); box.style.display = 'none'; showTab('battles'); curBattle = +a.dataset.b; renderBattleList(); renderBattleDetail(curBattle); });
     inner.querySelectorAll('a[data-d]').forEach(a => a.onclick = async e => { e.preventDefault(); const d = a.dataset.d, pid = +a.dataset.id;
