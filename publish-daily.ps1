@@ -89,6 +89,12 @@ function Publish-Battles([string]$d, [string]$iso, [string]$base, [string]$hitsP
   Get-ChildItem (Join-Path $DataDir 'tracks') -Filter "$iso-b*.js" -ErrorAction SilentlyContinue | Remove-Item
   Get-ChildItem (Join-Path $DataDir 'prof') -Filter "$iso.js" -ErrorAction SilentlyContinue | Remove-Item
   if (Test-Path (Join-Path $DataDir "sk\$iso")) { Remove-Item (Join-Path $DataDir "sk\$iso") -Recurse -Force }
+  # 阵营参照表 tools\day-race.tsv：其它已发布日期的玩家（名字→阵营）在前，当天 B25 名单在后（当天优先）
+  $rl = [System.Collections.Generic.List[string]]::new()
+  Get-ChildItem $DataDir -Filter '????-??-??.json' | Where-Object { $_.BaseName -ne $iso } | ForEach-Object {
+    ([IO.File]::ReadAllText($_.FullName, $Utf8) | ConvertFrom-Json).players | Where-Object { $_.race -in 0, 1 } | ForEach-Object { $rl.Add("$($_.name)`t$($_.race)") } }
+  if (Test-Path "$base.s2-players.csv") { Import-Csv "$base.s2-players.csv" -Encoding UTF8 | Where-Object { $_.Race -in '0', '1' } | ForEach-Object { $rl.Add("$($_.Name)`t$($_.Race)") } }
+  [IO.File]::WriteAllLines((Join-Path $Site 'tools\day-race.tsv'), $rl, $Utf8)
   $log = [AionBattleExtract]::Run($facts, @($frames | Where-Object { $_ }), (Join-Path $ReleaseDir 'npc-map-anchors.tsv'),
     (Join-Path $ReleaseDir 'mapbounds.tsv'), $DataDir, $iso, $TrackSampleSec, $hitsPath)
   $log -split "`n" | Where-Object { $_ -notmatch '^MAPS:' } | ForEach-Object { Write-Host "  $_" }

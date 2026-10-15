@@ -12,7 +12,7 @@ using System.Text.Json;
 
 public static class AionBattleExtract
 {
-    sealed class Kill { public DateTime T; public string K = "", V = ""; }
+    sealed class Kill { public DateTime T; public string K = "", V = ""; public int VR = -1, KR = -1; }
     sealed class Hit { public DateTime T; public int A, Tg, Sk, Mk = -1; public long Amt; public bool Auto; }
     sealed class Battle
     {
@@ -174,7 +174,7 @@ public static class AionBattleExtract
         var anchors = new Dictionary<uint, string>();
         if (File.Exists(anchorsPath))
             foreach (var l in File.ReadLines(anchorsPath)) { if (l.Length == 0 || l[0] == '#') continue; var p = l.Split('\t'); if (p.Length >= 2 && uint.TryParse(p[0], out var id)) anchors[id] = p[1].Trim().ToLowerInvariant(); }
-        long nPos = 0, nUse = 0; var identRank = new Dictionary<string, int>(); var identLv = new Dictionary<string, int>();
+        long nPos = 0, nUse = 0; var identRank = new Dictionary<string, int>(); var identRace = new Dictionary<string, int>(); var identLv = new Dictionary<string, int>();
         if (battles.Count > 0)
             foreach (var fp in framePaths)
             {
@@ -192,6 +192,7 @@ public static class AionBattleExtract
                             int e = 51; while (e + 1 < ib.Length && e < 51 + 128 && (ib[e] | ib[e + 1]) != 0) e += 2;
                             var nmI = Encoding.Unicode.GetString(ib, 51, e - 51);
                             int rk = BitConverter.ToUInt16(ib, ib.Length - 18), lv = BitConverter.ToUInt16(ib, ib.Length - 24);
+                            if (nmI.Length > 0 && ib[37] <= 1) identRace[nmI] = identRace.TryGetValue(nmI, out var oldR) && oldR != ib[37] ? -2 : ib[37];
                             if (nmI.Length > 0 && rk <= 18) { identRank[nmI] = Math.Max(identRank.GetValueOrDefault(nmI, -1), rk); if (lv is >= 1 and <= 100) identLv[nmI] = lv; }
                         }
                         continue;
@@ -232,6 +233,22 @@ public static class AionBattleExtract
         var bounds = new Dictionary<string, double[]>();
         if (File.Exists(boundsPath))
             foreach (var l in File.ReadLines(boundsPath)) { if (l.Length == 0 || l[0] == '#') continue; var p = l.Split('\t'); if (p.Length >= 5) bounds[p[0].ToLowerInvariant()] = p.Skip(1).Take(4).Select(v => double.Parse(v, CultureInfo.InvariantCulture)).ToArray(); }
+        // 阵亡者/击杀者阵营：① 身份帧 0x0020 race@37（同名多阵营冲突则弃用）② 当天 facts 里的玩家阵营（B25 名单，经 racePath 传入）③ PvP 击杀：击杀者阵营已知 → 阵亡者为对方阵营
+        var dayRace = new Dictionary<string, int>();
+        var rp = Path.Combine(Path.GetDirectoryName(outDir)!, "tools", "day-race.tsv");
+        if (File.Exists(rp)) foreach (var l in File.ReadLines(rp)) { var q = l.Split('\t'); if (q.Length == 2 && int.TryParse(q[1], out var rr) && rr is 0 or 1) dayRace[q[0]] = rr; }
+        int RaceOf(string n) { if (identRace.TryGetValue(n, out var r) && r >= 0) return r; if (dayRace.TryGetValue(n, out var r2)) return r2; return -1; }
+        int vByIdent = 0, vByOpp = 0, vUnk = 0, chk = 0, ok = 0, same = 0;
+        foreach (var k in dk)
+        {
+            int kr = RaceOf(k.K), vr = RaceOf(k.V);
+            if (kr >= 0 && vr >= 0) { chk++; if (kr != vr) ok++; else same++; }
+            if (vr >= 0) { k.VR = vr; vByIdent++; } else if (kr >= 0) { k.VR = 1 - kr; vByOpp++; } else { k.VR = -1; vUnk++; }
+            k.KR = kr >= 0 ? kr : (vr >= 0 ? 1 - vr : -1);
+        }
+        log.AppendLine($"阵亡阵营：共 {dk.Count}；身份帧/名单直接 {vByIdent}；击杀者对立推断 {vByOpp}；未知 {vUnk}。校验（双方阵营都已知 {chk} 条）：异阵营 {ok}，同阵营 {same}");
+        var unkNames = dk.Where(k => k.VR < 0).GroupBy(k => k.V).OrderByDescending(g => g.Count()).Take(15).Select(g => $"{g.Key}({g.Count()}; 击杀者 {g.First().K})");
+        if (vUnk > 0) log.AppendLine("未知样例：" + string.Join("，", unkNames));
         var summary = new List<object>(); int n = 0; var mapsUsed = new HashSet<string>();
         Directory.CreateDirectory(Path.Combine(outDir, "tracks"));
         // 每场先按会话 NPC 锚点数出各地图的“玩家票数”（会话 ≥3 个模板且占比 ≥75% 才算认出）
@@ -273,7 +290,7 @@ public static class AionBattleExtract
             summary.Add(new
             {
                 no = n, key, rule, start = b.S.ToString("o"), end = b.E.ToString("o"), minutes = Math.Round((b.E - b.S).TotalMinutes),
-                map, mapBasis, mapCandidates = candidates, maps = mapCounts, kills = b.Kills.Select(k => new { t = Math.Round((k.T - b.S).TotalSeconds), killer = k.K, victim = k.V }),
+                map, mapBasis, mapCandidates = candidates, maps = mapCounts, kills = b.Kills.Select(k => new { t = Math.Round((k.T - b.S).TotalSeconds), killer = k.K, victim = k.V, kr = k.KR, vr = k.VR }),
                 damage = dmg, tracked = b.Trk.Count
             });
             var tr = new { key, map, bounds = map.Length > 0 && bounds.TryGetValue(map, out var bb) ? bb : null, duration = Math.Round((b.E - b.S).TotalSeconds), names = b.Trk.Keys.ToDictionary(k => k.ToString(), k => pname.GetValueOrDefault(k, "")), tracks = b.Trk.ToDictionary(kv => kv.Key.ToString(), kv => kv.Value) };

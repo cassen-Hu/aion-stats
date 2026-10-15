@@ -58,7 +58,7 @@
 
   function render() {
     if (!data) return;
-    raceByName = {}; data.players.forEach(p => { if (p.race === 0 || p.race === 1) raceByName[p.name] = p.race; });
+    raceByName = {}; (battles || []).forEach(b => (b.kills || []).forEach(k => { if (k.vr === 0 || k.vr === 1) raceByName[k.victim] = k.vr; if (k.kr === 0 || k.kr === 1) raceByName[k.killer] = k.kr; })); data.players.forEach(p => { if (p.race === 0 || p.race === 1) raceByName[p.name] = p.race; });
     const P = filt(data.players, ['name', 'legion']);
     const n = table('tp', [{ k: 'name', n: '角色', t: 1, f: r => `<b class="pn" data-id="${r.id}">${esc(r.name)}</b>` }, { k: 'legion', n: '军团', t: 1, f: r => r.legion ? `<span class="ln" data-lg="${esc(r.legion)}" data-r="${r.race}">${esc(r.legion)}</span>` : '' },
       { k: 'race', n: '阵营', f: r => race(r.race) }, { k: 'classId', n: '职业', f: r => cls(r.classId) }, ...dmgCols()], P, limit);
@@ -85,7 +85,7 @@
 
   // 阵亡按阵营拆分（按阵亡者名字查当天名单；阵营未知只计入总数）
   let raceByName = {};
-  function dsplit(kills) { let e = 0, m = 0; kills.forEach(k => { const r = raceByName[k.victim]; if (r === 0) e++; else if (r === 1) m++; }); return { t: kills.length, e, m }; }
+  function dsplit(kills) { let e = 0, m = 0; kills.forEach(k => { const r = (k.vr === 0 || k.vr === 1) ? k.vr : raceByName[k.victim]; if (r === 0) e++; else if (r === 1) m++; }); return { t: kills.length, e, m }; }
   const dhtml = (d, sep) => `${fmt(d.t)}${sep || ' '}<span class="ds"><span class="r0">天 ${fmt(d.e)}</span> <span class="r1">魔 ${fmt(d.m)}</span></span>`;
   // —— 战斗场次 ——
   const mapName = m => m ? ((MAPS[m] && MAPS[m].name) || m) : '未识别地图';
@@ -206,9 +206,9 @@
     if ($('#sbDeath').checked) { ctx.strokeStyle = '#ef4444'; ctx.lineWidth = 2;
       for (const d of SB.deaths) { if (d.t > t || t - d.t > 15) continue; const k = posAt(d.p, d.t) ?? posAt(d.p, d.t + 20); if (k === null) continue;
         const [x, y] = scr(...base(d.p.X[k], d.p.Y[k]), V); ctx.globalAlpha = 1 - (t - d.t) / 15;
-        ctx.beginPath(); ctx.moveTo(x - 5, y - 5); ctx.lineTo(x + 5, y + 5); ctx.moveTo(x + 5, y - 5); ctx.lineTo(x - 5, y + 5); ctx.stroke(); ctx.globalAlpha = 1; } }
-    const kills = SB.b.kills.filter(k => k.t <= t).length;
-    $('#sbTime').innerHTML = `${mmss(t)} / ${mmss(SB.tr.duration)} · <span class="ely">天族 ${ce}</span> · <span class="asm">魔族 ${ca}</span> · <span class="dead">阵亡 ${kills}</span>`;
+        ctx.strokeStyle = RCOL[d.k.vr] || '#ef4444'; ctx.beginPath(); ctx.moveTo(x - 5, y - 5); ctx.lineTo(x + 5, y + 5); ctx.moveTo(x + 5, y - 5); ctx.lineTo(x - 5, y + 5); ctx.stroke(); ctx.globalAlpha = 1; } }
+    const dk = dsplit(SB.b.kills.filter(k => k.t <= t));
+    $('#sbTime').innerHTML = `${mmss(t)} / ${mmss(SB.tr.duration)} · <span class="ely">天族 ${ce}</span> · <span class="asm">魔族 ${ca}</span> · <span class="dead">阵亡 ${dk.t}</span>（<span class="ely">天 ${dk.e}</span> / <span class="asm">魔 ${dk.m}</span>）`;
     $('#sbSlider').value = Math.floor(t);
   }
   function tick(ts) {
