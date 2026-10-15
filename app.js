@@ -203,7 +203,10 @@
       const col = RCOL[p.race] || UCOL;
       const [x, y] = scr(...base(p.X[k], p.Y[k]), V);
       ctx.fillStyle = col; ctx.beginPath(); ctx.arc(x, y, 4, 0, 7); ctx.fill(); ctx.strokeStyle = '#000'; ctx.lineWidth = 1; ctx.stroke();
-      if ($('#sbNames').checked) { ctx.fillStyle = '#e6eef8'; ctx.font = '11px sans-serif'; ctx.fillText(p.name, x + 6, y - 4); }
+      if ($('#sbNames').checked) { // 名字颜色：天族 白/阵亡灰白，魔族 红/阵亡暗红；阵亡＝最近一次阵亡后还没移动过；阵营未知保持原样
+        let lc = '#e6eef8'; if (p.race === 0 || p.race === 1) { let dead = false; for (const d of SB.deaths) { if (d.p !== p || d.t > t) continue; const kd = posAt(p, d.t); if (kd !== null && p.X[kd] === p.X[k] && p.Y[kd] === p.Y[k]) dead = true; }
+          lc = p.race === 0 ? (dead ? '#9a9a9a' : '#ffffff') : (dead ? '#7a1010' : '#ff3b3b'); ctx.shadowColor = 'rgba(0,0,0,.85)'; ctx.shadowBlur = 3; }
+        ctx.fillStyle = lc; ctx.font = '11px sans-serif'; ctx.fillText(p.name, x + 6, y - 4); ctx.shadowBlur = 0; ctx.shadowColor = 'transparent'; }
       SB.pts.push({ x, y, p }); if (p.race === 0) ce++; else if (p.race === 1) ca++;
     }
     if ($('#sbDeath').checked) { ctx.strokeStyle = '#ef4444'; ctx.lineWidth = 2;
