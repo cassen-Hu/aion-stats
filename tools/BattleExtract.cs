@@ -13,7 +13,7 @@ using System.Text.Json;
 public static class AionBattleExtract
 {
     sealed class Kill { public DateTime T; public string K = "", V = ""; }
-    sealed class Hit { public DateTime T; public int A, Tg; public long Amt; public bool Auto; }
+    sealed class Hit { public DateTime T; public int A, Tg, Sk; public long Amt; public bool Auto; }
     sealed class Battle
     {
         public DateTime S, E; public List<Kill> Kills = new(); public Dictionary<int, long[]> Dmg = new();
@@ -69,12 +69,12 @@ public static class AionBattleExtract
                 if ((fc == 0 || fc == 1) && ap > 0)
                 {
                     long amt; long.TryParse(f[cAm], out amt); if (amt <= 0) continue;
-                    long sec = t.Ticks / TimeSpan.TicksPerSecond; int sk = Int(f[cSk]);
+                    long sec = t.Ticks / TimeSpan.TicksPerSecond; int skv = Int(f[cSk]);
                     // 多个观察端会收到同一击：同攻击者/目标/技能/数值 在 ±1 秒内只算一次
-                    var k0 = (ap, tp, (long)sk, amt, sec);
-                    if (seen.Contains(k0) || seen.Contains((ap, tp, (long)sk, amt, sec - 1)) || seen.Contains((ap, tp, (long)sk, amt, sec + 1))) continue;
+                    var k0 = (ap, tp, (long)skv, amt, sec);
+                    if (seen.Contains(k0) || seen.Contains((ap, tp, (long)skv, amt, sec - 1)) || seen.Contains((ap, tp, (long)skv, amt, sec + 1))) continue;
                     seen.Add(k0);
-                    hits.Add(new Hit { T = t, A = ap, Tg = tp, Amt = amt, Auto = fc == 1 });
+                    hits.Add(new Hit { T = t, A = ap, Tg = tp, Sk = skv, Amt = amt, Auto = fc == 1 });
                 }
             }
         }
@@ -85,7 +85,7 @@ public static class AionBattleExtract
             {
                 var p = l.Split(',');
                 hits.Add(new Hit { T = DateTime.Parse(p[0], CultureInfo.InvariantCulture, DateTimeStyles.AdjustToUniversal | DateTimeStyles.AssumeUniversal),
-                    A = Int(p[1]), Tg = p[6] == "1" ? Int(p[2]) : 0, Amt = long.Parse(p[4]), Auto = p[5] == "1" });
+                    A = Int(p[1]), Tg = p[6] == "1" ? Int(p[2]) : 0, Sk = Int(p[3]), Amt = long.Parse(p[4]), Auto = p[5] == "1" });
             }
             log.AppendLine($"伤害口径：统一账本 {Path.GetFileName(hitsPath)}，{hits.Count} 击");
         }
@@ -240,6 +240,24 @@ public static class AionBattleExtract
             File.WriteAllText(Path.Combine(outDir, "tracks", key + ".js"), "(window.AION_TRACKS=window.AION_TRACKS||{})[" + JsonSerializer.Serialize(key) + "]=" + JsonSerializer.Serialize(tr, new JsonSerializerOptions { Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping }) + ";", new UTF8Encoding(false));
         }
         var opts = new JsonSerializerOptions { Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
+        // 玩家资料卡：每人前 8 个技能（按伤害；技能0 = 普攻）+ 当天击杀/阵亡（按名字，4 秒去重后的击杀消息）
+        var sk = new Dictionary<int, Dictionary<int, long[]>>();
+        foreach (var h in hits)
+        {
+            if (!sk.TryGetValue(h.A, out var m)) sk[h.A] = m = new();
+            int key = h.Auto ? 0 : h.Sk;
+            if (!m.TryGetValue(key, out var v)) m[key] = v = new long[3];
+            v[h.Tg > 0 ? 0 : 1] += h.Amt; v[2]++;
+        }
+        var kd = new Dictionary<string, int[]>();
+        foreach (var k in dk) { (kd.TryGetValue(k.K, out var a) ? a : kd[k.K] = new int[2])[0]++; (kd.TryGetValue(k.V, out var b2) ? b2 : kd[k.V] = new int[2])[1]++; }
+        var prof = new
+        {
+            s = sk.ToDictionary(x => x.Key.ToString(), x => x.Value.OrderByDescending(v => v.Value[0] + v.Value[1]).Take(8).Select(v => new long[] { v.Key, v.Value[0], v.Value[1], v.Value[2] }).ToList()),
+            kd
+        };
+        Directory.CreateDirectory(Path.Combine(outDir, "prof"));
+        File.WriteAllText(Path.Combine(outDir, "prof", date + ".js"), "(window.AION_PROF=window.AION_PROF||{})[" + JsonSerializer.Serialize(date) + "]=" + JsonSerializer.Serialize(prof, opts) + ";", new UTF8Encoding(false));
         File.WriteAllText(Path.Combine(outDir, date + ".battles.json"), JsonSerializer.Serialize(summary, opts), new UTF8Encoding(false));
         log.AppendLine($"战斗 {battles.Count} 场；地图 {string.Join(",", mapsUsed)}");
         log.Append("MAPS:" + string.Join(",", mapsUsed));

@@ -143,6 +143,15 @@ foreach ($dd in $dates) {
   [IO.File]::WriteAllText((Join-Path $dayDir "$dd.js"), "(window.AION_DAYS=window.AION_DAYS||{})[`"$dd`"]={`"daily`":$daily,`"battles`":$bat};", $Utf8)
 }
 
+# 玩家跨日索引 data/players.js（名字+阵营 → 出现的日期与当天编号），资料卡打开时才加载
+$pidx = @{}
+foreach ($dd in $dates) {
+  $dj = [IO.File]::ReadAllText((Join-Path $DataDir "$dd.json"), $Utf8) | ConvertFrom-Json
+  foreach ($p in $dj.players) { $k = "$($p.name)|$($p.race)"; if (-not $pidx.ContainsKey($k)) { $pidx[$k] = [System.Collections.ArrayList]::new() }; [void]$pidx[$k].Add(@($dd, $p.id, ($p.pvpSkill + $p.pvpAuto), ($p.pveSkill + $p.pveAuto))) }
+}
+[IO.File]::WriteAllText((Join-Path $DataDir 'players.js'), 'window.AION_PLAYERS=' + (ConvertTo-Json $pidx -Depth 4 -Compress) + ';', $Utf8)
+Write-Host "data/players.js 已更新：$($pidx.Count) 个角色"
+
 # 生成 data/bundle.js（双击 index.html 用 file:// 打开时浏览器禁止 fetch，所以把数据打包成脚本）
 $bundle = 'window.AION_DATA={"index":' + (ConvertTo-Json @($dates) -Compress) + ',"maps":' + (ConvertTo-Json $mapInfo -Depth 5 -Compress) + '};'
 [IO.File]::WriteAllText((Join-Path $DataDir 'bundle.js'), $bundle, $Utf8)

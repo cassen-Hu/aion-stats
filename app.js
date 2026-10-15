@@ -59,7 +59,7 @@
   function render() {
     if (!data) return;
     const P = filt(data.players, ['name', 'legion']);
-    const n = table('tp', [{ k: 'name', n: '角色', t: 1, f: r => `<b>${esc(r.name)}</b>` }, { k: 'legion', n: '军团', t: 1 },
+    const n = table('tp', [{ k: 'name', n: '角色', t: 1, f: r => `<b class="pn" data-id="${r.id}">${esc(r.name)}</b>` }, { k: 'legion', n: '军团', t: 1 },
       { k: 'race', n: '阵营', f: r => race(r.race) }, { k: 'classId', n: '职业', f: r => cls(r.classId) }, ...dmgCols()], P, limit);
     $('#pm').innerHTML = n > limit ? `<button id="mb">显示更多（共 ${n} 人，当前 ${limit}）</button>` : `共 ${n} 人`;
     if (n > limit) $('#mb').onclick = () => { limit += 200; render(); };
@@ -107,7 +107,7 @@
       <h4>参战玩家</h4><div class="tw"><table id="tb"></table></div>
       <div class="grid2"><div><h4>军团</h4><div class="tw"><table id="tbl"></table></div></div>
       <div><h4>击杀记录（${b.kills.length}）</h4><div class="kills">${b.kills.map(k => `<div><span class="tm">${mmss(k.t)}</span>${esc(k.killer)} <span class="dead">✕</span> ${esc(k.victim)}</div>`).join('') || '无'}</div></div></div></div>`;
-    table('tb', [{ k: 'name', n: '角色', t: 1, f: r => `<b>${esc(r.name)}</b>` }, { k: 'legion', n: '军团', t: 1 }, { k: 'race', n: '阵营', f: r => race(r.race) },
+    table('tb', [{ k: 'name', n: '角色', t: 1, f: r => `<b class="pn" data-id="${r.id}">${esc(r.name)}</b>` }, { k: 'legion', n: '军团', t: 1 }, { k: 'race', n: '阵营', f: r => race(r.race) },
       { k: 'classId', n: '职业', f: r => cls(r.classId) }, num('kills', '击杀'), num('deaths', '阵亡'), ...dmgCols()], rows);
     sortState.tbl ||= ['pvp', -1];
     table('tbl', [{ k: 'legion', n: '军团', t: 1 }, { k: 'race', n: '阵营', f: r => race(r.race) }, num('members', '人数'), num('pvp', 'PvP'), num('pve', 'PvE')], Object.values(lg));
@@ -232,6 +232,32 @@
   cv.addEventListener('touchmove', e => { if (pinch && e.touches.length === 2) { const [a, b] = e.touches; SB.zoom = Math.max(.5, Math.min(40, pinch.z * Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY) / pinch.d)); draw(); } }, { passive: true });
   cv.addEventListener('touchend', () => { pinch = null; });
   window.addEventListener('resize', draw);
+
+  // —— 玩家资料卡（点名字打开；技能/击杀和跨日索引按需加载）——
+  async function getProf(d) { if (!(window.AION_PROF && window.AION_PROF[d])) await loadScript(`data/prof/${d}.js`); return window.AION_PROF[d]; }
+  async function getPlayers() { if (!window.AION_PLAYERS) await loadScript('data/players.js'); return window.AION_PLAYERS; }
+  async function openProfile(id) {
+    const p = byId[id]; if (!p) return;
+    let box = $('#prof'); if (!box) { document.body.insertAdjacentHTML('beforeend', '<div id="prof" class="pmask"><div class="pbox"></div></div>'); box = $('#prof'); box.onclick = e => { if (e.target === box || e.target.classList.contains('px')) box.style.display = 'none'; }; }
+    const inner = box.querySelector('.pbox'); box.style.display = 'flex'; inner.innerHTML = '<p class="note">加载中…</p>';
+    let pr = null, pl = null; try { pr = await getProf(data.date); } catch {} try { pl = await getPlayers(); } catch {}
+    const kd = (pr && pr.kd && pr.kd[p.name]) || [0, 0];
+    const bt = battles.map((b, i) => { const d = b.damage.find(x => x.id === id); const k = b.kills.filter(x => x.killer === p.name).length, v = b.kills.filter(x => x.victim === p.name).length;
+      return (d || k || v) ? { i, b, pvp: d ? d.pvpSkill + d.pvpAuto : 0, pve: d ? d.pveSkill + d.pveAuto : 0, k, v } : null; }).filter(Boolean);
+    const sk = (pr && pr.s && pr.s[id]) || [];
+    const days = (pl && pl[p.name + '|' + p.race]) || [];
+    const row = (a, b) => `<tr><td class="t">${a}</td><td>${b}</td></tr>`;
+    inner.innerHTML = `<button class="px">✕</button><h2>${esc(p.name)} ${race(p.race)}</h2>
+      <table class="kv">${row('军团', esc(p.legion) || '（无）')}${p.classId ? row('职业', cls(p.classId)) : ''}${row('日期', data.date)}</table>
+      <h4>当天伤害</h4><table class="kv">${row('PvP 技能', fmt(p.pvpSkill))}${row('PvP 普攻', fmt(p.pvpAuto))}${row('PvE 技能', fmt(p.pveSkill))}${row('PvE 普攻', fmt(p.pveAuto))}${row('击杀 / 阵亡', `${kd[0]} / <span class="dead">${kd[1]}</span>`)}</table>
+      <h4>参与的战斗（${bt.length}）</h4>${bt.length ? `<table class="kv"><tr><th class="t">场次</th><th>PvP</th><th>PvE</th><th>击杀</th><th>阵亡</th></tr>${bt.map(x => `<tr><td class="t"><a href="#" data-b="${x.i}">第 ${x.b.no} 场 ${hm(x.b.start)} ${esc(mapName(x.b.map))}</a></td><td>${fmt(x.pvp)}</td><td>${fmt(x.pve)}</td><td>${x.k}</td><td>${x.v}</td></tr>`).join('')}</table>` : '<p class="note">无</p>'}
+      <h4>伤害最高的技能</h4>${sk.length ? `<table class="kv"><tr><th class="t">技能</th><th>PvP</th><th>PvE</th><th>命中</th></tr>${sk.map(s => `<tr><td class="t">${s[0] === 0 ? '普攻' : '技能 #' + s[0]}</td><td>${fmt(s[1])}</td><td>${fmt(s[2])}</td><td>${fmt(s[3])}</td></tr>`).join('')}</table><p class="note">技能只显示协议里的技能编号，没有可靠的中文名对照表。</p>` : '<p class="note">无</p>'}
+      <h4>出现过的日期（${days.length}）</h4>${days.length ? `<table class="kv"><tr><th class="t">日期</th><th>PvP</th><th>PvE</th></tr>${days.map(x => `<tr><td class="t"><a href="#" data-d="${x[0]}" data-id="${x[1]}">${x[0]}</a></td><td>${fmt(x[2])}</td><td>${fmt(x[3])}</td></tr>`).join('')}</table><p class="note">按“名字+阵营”跨日匹配。</p>` : '<p class="note">-</p>'}`;
+    inner.querySelectorAll('a[data-b]').forEach(a => a.onclick = e => { e.preventDefault(); box.style.display = 'none'; showTab('battles'); curBattle = +a.dataset.b; renderBattleList(); renderBattleDetail(curBattle); });
+    inner.querySelectorAll('a[data-d]').forEach(a => a.onclick = async e => { e.preventDefault(); const d = a.dataset.d, pid = +a.dataset.id;
+      if (d !== data.date) { $('#date').value = d; await load(d); } openProfile(pid); });
+  }
+  document.addEventListener('click', e => { const t = e.target.closest('.pn'); if (t) openProfile(+t.dataset.id); });
 
   // —— 通用 ——
   function showTab(name) {
