@@ -5,6 +5,11 @@ const fs = require('fs'), vm = require('vm'), path = require('path'), readline =
 const [dataDir, date, base, factsPath, skillsJson, potionsJson] = process.argv.slice(2);
 const w = {}; vm.runInNewContext(fs.readFileSync(path.join(dataDir, 'day', date + '.js'), 'utf8'), { window: w });
 const day = Object.values(w.AION_DAYS)[0].daily, byName = {}, RC = {}; day.players.forEach(p => { if (p.race === 0 || p.race === 1) RC[p.id] = p.race; }); day.players.forEach(p => { if (!(p.name in byName)) byName[p.name] = p.id; });
+// 2026-10-16：只治疗不打伤害的玩家（prof hn）也要有红药/施法/增益/控制/装备
+try { const pw = {}; vm.runInNewContext(fs.readFileSync(path.join(dataDir, 'prof', date + '.js'), 'utf8'), { window: pw }); const pr = Object.values(pw).map(o => o && o[date]).find(Boolean) || {};
+  let addN = 0; for (const [id, v] of Object.entries(pr.hn || {})) { const nm = v[0]; if (!(nm in byName)) { byName[nm] = +id; addN++; } if ((v[1] === 0 || v[1] === 1) && RC[+id] === undefined) RC[+id] = v[1]; } console.log(`纯治疗玩家补进 px：${addN} 人`); } catch (e) { console.log('读 prof hn 失败：' + e.message); }
+// 攻击结果与账本同一阵营规则：当天 0x0020 阵营表（tools/day-race.tsv，按名字），双方阵营已知且相反才算
+const DR = {}; try { fs.readFileSync(path.join(__dirname, 'day-race.tsv'), 'utf8').split(/\r?\n/).forEach(l => { const q = l.split('\t'); if (q.length === 2 && (q[1] === '0' || q[1] === '1')) DR[q[0]] = +q[1]; }); } catch {}
 // 控制类状态：按 aion_skills_cn.json 每个技能 Effects[].Type 归类（大小写不敏感；Buff* 是自身防护效果，不算）
 // 0=击倒 Stumble　1=麻痹 Paralyze/Stun　2=沉默 Silence　3=失明 Blind　4=晕厥 Stagger/Spin/OpenAerial
 const CCT = { stumble: 0, paralyze: 1, stun: 1, silence: 2, blind: 3, stagger: 4, spin: 4, openaerial: 4 };
@@ -42,7 +47,10 @@ const RK = { 0x0A: [0], 0xCA: [1], 0x02: [2], 0xC2: [2, 1], 0x04: [3], 0xC4: [3,
   if (factsPath && fs.existsSync(factsPath)) {
     const rl = readline.createInterface({ input: fs.createReadStream(factsPath), crlfDelay: Infinity }); let h = null, seen = new Set();
     for await (const l of rl) { const f = l.split(','); if (!h) { h = {}; f.forEach((n, i) => h[n.replace(/^\uFEFF/, '')] = i); continue; }
-      if (f[h.Opcode] !== '0x002B') continue; const a = +f[h.ActorPersonIndex], t = +f[h.TargetPersonIndex]; if (!(a > 0 && t > 0) || a === t) continue; if (RC[a] !== undefined && RC[a] === RC[t]) continue;
+      if (f[h.Opcode] !== '0x002B') continue; const a = +f[h.ActorPersonIndex], t = +f[h.TargetPersonIndex]; if (!(a > 0 && t > 0) || a === t) continue;
+      const fc = +f[h.FactClass]; if (fc !== 0 && fc !== 6) continue;   // 只算伤害记录（0x0AFF 等治疗是 class4，不算攻击结果）
+      if ((parseInt(f[h.MarkerHex], 16) & 0xff) !== 0) continue;
+      const an = (f[h.ActorName] || '').replace(/"/g, ''), tn = (f[h.TargetName] || '').replace(/"/g, ''); const ra = an in DR ? DR[an] : RC[a], rt = tn in DR ? DR[tn] : RC[t]; if (ra === undefined || rt === undefined || ra === rt) continue;
       const key = f[h.PayloadSHA256] + '|' + f[h.RecordIndex]; if (seen.has(key)) continue; seen.add(key);
       const r = RK[(parseInt(f[h.MarkerHex], 16) >> 8) & 0xff]; if (!r) continue;
       const A = G(a), T = G(t); A.ra ||= [0, 0, 0, 0, 0, 0]; T.rr ||= [0, 0, 0, 0, 0, 0]; r.forEach(i => { A.ra[i]++; T.rr[i]++; }); }

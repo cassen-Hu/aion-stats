@@ -64,7 +64,10 @@ function Publish-One([string]$d) {
   $frames = $FramesFile
   if (-not $frames -and (Test-Path "$base.txt")) { $m = Get-Content "$base.txt" -Encoding UTF8 -TotalCount 5 | Select-String '文件:\s*(.+\.ndjson)'; if ($m) { $frames = $m.Matches[0].Groups[1].Value.Trim() } }
   $drf = Join-Path $Site 'tools\day-race.tsv'
-  & node (Join-Path $Site 'tools\build-day-race.js') $drf $frames | ForEach-Object { Write-Host "  $_" }
+  # 2026-10-16：阵营表与账本同一份（AionCaptureReview Ledger 写的 x-day-race.tsv，当天 0x0020@37 按名字，同名冲突=-1 不用），PvP/承伤/分场/攻击结果同一规则
+  $ldr = "$lbase.x-day-race.tsv"
+  if (Test-Path $ldr) { $rl = @([IO.File]::ReadAllLines($ldr, $Utf8) | Where-Object { $_ -match "`t[01]$" }); [IO.File]::WriteAllLines($drf, [string[]]$rl, $Utf8); Write-Host "  阵营表取自账本 $(Split-Path $ldr -Leaf)：$($rl.Count) 人" }
+  else { & node (Join-Path $Site 'tools\build-day-race.js') $drf $frames | ForEach-Object { Write-Host "  $_" } }
   $pr = @{}; foreach ($l in [IO.File]::ReadAllLines($drf, $Utf8)) { $q = $l.Split("`t"); if ($q.Length -eq 2) { $pr[$q[0]] = [long]$q[1] } }
   foreach ($p in $players) { $p.race = if ($pr.ContainsKey($p.name)) { $pr[$p.name] } else { -1 } }
   # 同阵营不能互相攻击：账本命中里攻击者与目标同阵营的（切磋/错误）从 PvP 里扣掉，不计入任何伤害
